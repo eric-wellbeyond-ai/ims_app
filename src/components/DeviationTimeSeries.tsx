@@ -50,6 +50,7 @@ export default function DeviationTimeSeries({
             }
           />
           <YAxis
+            tickFormatter={(v: number) => v.toFixed(1)}
             label={{
               value: "Rel. Deviation (%)",
               angle: -90,

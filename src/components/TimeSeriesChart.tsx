@@ -39,10 +39,13 @@ export default function TimeSeriesChart({ deviations }: TimeSeriesChartProps) {
               v ? new Date(v).toLocaleTimeString() : ""
             }
           />
-          <YAxis />
+          <YAxis tickFormatter={(v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 })} />
           <Tooltip
             labelFormatter={(v: string) =>
               v ? new Date(v).toLocaleString() : ""
+            }
+            formatter={(v: number | undefined) =>
+              v != null ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : ""
             }
           />
           <Legend />

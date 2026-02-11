@@ -18,6 +18,14 @@ function fmtPct(val: number): string {
   return `${(val * 100).toFixed(2)}%`;
 }
 
+const ACRONYMS = new Set(["wc", "gor"]);
+
+function fmtPhase(phase: string): string {
+  return ACRONYMS.has(phase.toLowerCase())
+    ? phase.toUpperCase()
+    : phase.charAt(0).toUpperCase() + phase.slice(1);
+}
+
 function fmtVal(val: number): string {
   return val.toLocaleString(undefined, {
     minimumFractionDigits: 2,
@@ -44,8 +52,8 @@ export default function ComparisonTable({ comparison }: ComparisonTableProps) {
         <TableBody>
           {comparison.map((row) => (
             <TableRow key={row.phase}>
-              <TableCell sx={{ fontWeight: 600, textTransform: "capitalize" }}>
-                {row.phase}
+              <TableCell sx={{ fontWeight: 600 }}>
+                {fmtPhase(row.phase)}
               </TableCell>
               <TableCell>{row.unit}</TableCell>
               <TableCell align="right">{fmtVal(row.mpfm_mean)}</TableCell>

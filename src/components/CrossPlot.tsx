@@ -22,7 +22,7 @@ export default function CrossPlot({ deviations }: CrossPlotProps) {
   const [tab, setTab] = useState(0);
   const phase = PHASES[tab];
 
-  const { scatterData, lineData } = useMemo(() => {
+  const { scatterData, lineData, domain } = useMemo(() => {
     const points = deviations
       .map((d) => ({
         sep: d[`${phase}_sep`] as number | null,
@@ -37,14 +37,18 @@ export default function CrossPlot({ deviations }: CrossPlotProps) {
       );
 
     const allVals = points.flatMap((p) => [p.sep, p.mpfm]);
-    const min = Math.min(...allVals);
-    const max = Math.max(...allVals);
+    const dataMin = Math.min(...allVals);
+    const dataMax = Math.max(...allVals);
+    const range = dataMax - dataMin || 1;
+    const margin = range * 0.02;
+    const axisMin = dataMin - margin;
+    const axisMax = dataMax + margin;
     const lineData = [
-      { sep: min, mpfm: min },
-      { sep: max, mpfm: max },
+      { sep: axisMin, mpfm: axisMin },
+      { sep: axisMax, mpfm: axisMax },
     ];
 
-    return { scatterData: points, lineData };
+    return { scatterData: points, lineData, domain: [axisMin, axisMax] as [number, number] };
   }, [deviations, phase]);
 
   return (
@@ -61,6 +65,8 @@ export default function CrossPlot({ deviations }: CrossPlotProps) {
             dataKey="sep"
             type="number"
             name="Sep Ref"
+            domain={domain}
+            tickFormatter={(v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             label={{
               value: "Separator Reference",
               position: "insideBottom",
@@ -71,9 +77,13 @@ export default function CrossPlot({ deviations }: CrossPlotProps) {
             dataKey="mpfm"
             type="number"
             name="MPFM"
+            domain={domain}
+            tickFormatter={(v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             label={{ value: "MPFM", angle: -90, position: "insideLeft" }}
           />
-          <Tooltip />
+          <Tooltip
+            formatter={(v: number | undefined) => v != null ? v.toLocaleString(undefined, { maximumFractionDigits: 0 }) : ""}
+          />
           <Scatter
             data={scatterData}
             fill="#1565c0"
