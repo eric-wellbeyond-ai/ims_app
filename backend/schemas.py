@@ -23,6 +23,8 @@ class AnalysisRequest(BaseModel):
 
 
 class PhaseResult(BaseModel):
+    model_config = {"extra": "ignore"}
+
     phase: str
     unit: str
     mpfm_mean: float

@@ -28,9 +28,13 @@ export default function UploadPage() {
     flash_factor: 94.13,
     bsw: 0.2496,
   });
-  const [testStart, setTestStart] = useState("");
-  const [testEnd, setTestEnd] = useState("");
-  const [waterCutSamples, setWaterCutSamples] = useState<WaterCutSample[]>([]);
+  // Pre-populated with known sample data for testing
+  const [testStart, setTestStart] = useState("2025-10-10T19:00:00");
+  const [testEnd, setTestEnd] = useState("2025-10-11T07:00:00");
+  const [waterCutSamples, setWaterCutSamples] = useState<WaterCutSample[]>([
+    { timestamp: "2025-10-10T20:00:00", value: 0.25 },
+    { timestamp: "2025-10-11T02:00:00", value: 0.24 },
+  ]);
 
   const canSubmit = file && testStart && testEnd && !loading;
 

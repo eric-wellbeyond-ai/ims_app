@@ -1,12 +1,18 @@
+from __future__ import annotations
+
 import sys
 import uuid
+import logging
 from pathlib import Path
 
 import pandas as pd
 import numpy as np
 
+logger = logging.getLogger(__name__)
+
 # Add the algorithm directory to the path
 ALGO_DIR = str(Path(__file__).resolve().parent.parent.parent.parent / "claude_algo")
+logger.info("Algorithm directory: %s (exists: %s)", ALGO_DIR, Path(ALGO_DIR).exists())
 if ALGO_DIR not in sys.path:
     sys.path.insert(0, ALGO_DIR)
 
@@ -26,6 +32,21 @@ from backend.schemas import PVTConfig
 _result_cache: dict[str, dict] = {}
 
 
+def _sanitize_value(v):
+    """Convert NaN/NaT to None for JSON serialization."""
+    if v is None:
+        return None
+    if isinstance(v, float) and (np.isnan(v) or np.isinf(v)):
+        return None
+    if isinstance(v, (np.integer,)):
+        return int(v)
+    if isinstance(v, (np.floating,)):
+        return float(v)
+    if isinstance(v, (np.bool_,)):
+        return bool(v)
+    return v
+
+
 def _df_to_records(df: pd.DataFrame) -> list[dict]:
     """Convert DataFrame to JSON-serializable list of dicts."""
     out = df.reset_index()
@@ -35,7 +56,9 @@ def _df_to_records(df: pd.DataFrame) -> list[dict]:
             out[col] = out[col].dt.strftime("%Y-%m-%dT%H:%M:%S")
     # Replace NaN with None
     out = out.where(out.notna(), None)
-    return out.to_dict("records")
+    records = out.to_dict("records")
+    # Sanitize numpy types
+    return [{k: _sanitize_value(v) for k, v in row.items()} for row in records]
 
 
 def run_analysis(
@@ -49,6 +72,15 @@ def run_analysis(
     Run the MPFM validation analysis using user-provided config.
     Bypasses read_metadata() — PVT and window come from the form.
     """
+    logger.info("=== Starting analysis ===")
+    logger.info("File: %s (exists: %s, size: %s bytes)",
+                filepath, Path(filepath).exists(),
+                Path(filepath).stat().st_size if Path(filepath).exists() else "N/A")
+    logger.info("Sheet: %s", sheet_name)
+    logger.info("PVT: shrinkage=%s, flash=%s, bsw=%s",
+                pvt_config.oil_shrinkage, pvt_config.flash_factor, pvt_config.bsw)
+    logger.info("Window: %s -> %s", test_start, test_end)
+
     pvt = PVTProperties(
         oil_shrinkage=pvt_config.oil_shrinkage,
         flash_factor=pvt_config.flash_factor,
@@ -61,15 +93,28 @@ def run_analysis(
 
     # Determine if file is CSV or Excel
     ext = Path(filepath).suffix.lower()
+    logger.info("File extension: %s", ext)
+
     if ext == ".csv":
+        logger.info("Reading as CSV")
         raw = _read_csv(filepath)
     else:
+        logger.info("Reading as Excel with openpyxl")
         raw = read_timeseries(filepath, sheet_name)
 
+    logger.info("Raw data: %d rows, %s -> %s", len(raw), raw.index.min(), raw.index.max())
+
     ts = filter_test_window(raw, window)
+    logger.info("Filtered to test window: %d rows", len(ts))
+
     ts = compute_derived_columns(ts, pvt)
+    logger.info("Derived columns computed. Columns: %s", list(ts.columns))
+
     devs = compute_deviations(ts)
+    logger.info("Deviations computed: %d rows", len(devs))
+
     comparison = build_comparison_table(ts, devs)
+    logger.info("Comparison table:\n%s", comparison.to_string())
 
     session_id = str(uuid.uuid4())
     _result_cache[session_id] = {
@@ -78,8 +123,14 @@ def run_analysis(
         "timeseries": ts,
     }
 
+    # Sanitize comparison records (handles NaN acceptance_limit, None within_acceptance)
+    comp_records = comparison.to_dict("records")
+    comp_records = [{k: _sanitize_value(v) for k, v in row.items()} for row in comp_records]
+
+    logger.info("=== Analysis complete. Session: %s ===", session_id)
+
     return {
-        "comparison": comparison.to_dict("records"),
+        "comparison": comp_records,
         "deviations": _df_to_records(devs),
         "timeseries": _df_to_records(ts),
         "n_samples": len(ts),
