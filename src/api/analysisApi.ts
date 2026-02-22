@@ -1,14 +1,17 @@
 import type { AnalysisRequest, AnalysisResponse } from "../types/analysis";
 
+type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 export async function postAnalysis(
   file: File,
-  config: AnalysisRequest
+  config: AnalysisRequest,
+  fetchFn: FetchFn = fetch,
 ): Promise<AnalysisResponse> {
   const form = new FormData();
   form.append("file", file);
   form.append("config", JSON.stringify(config));
 
-  const res = await fetch("/api/analyze", {
+  const res = await fetchFn("/api/analyze", {
     method: "POST",
     body: form,
   });

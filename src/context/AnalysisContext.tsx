@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { AnalysisRequest, AnalysisResponse } from "../types/analysis";
 import { postAnalysis } from "../api/analysisApi";
+import { useAuthFetch } from "../auth/useAuthFetch";
 
 interface AnalysisState {
   result: AnalysisResponse | null;
@@ -28,11 +29,13 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     error: null,
   });
 
+  const authFetch = useAuthFetch();
+
   const runAnalysis = useCallback(
     async (file: File, config: AnalysisRequest) => {
       setState({ result: null, loading: true, error: null });
       try {
-        const result = await postAnalysis(file, config);
+        const result = await postAnalysis(file, config, authFetch);
         setState({ result, loading: false, error: null });
       } catch (err) {
         setState({
@@ -43,7 +46,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         throw err;
       }
     },
-    []
+    [authFetch],
   );
 
   const clearResults = useCallback(() => {

@@ -1,12 +1,14 @@
 """
 Case persistence API endpoints.
 
-POST   /api/cases              – save a new case (config + optional file)
-GET    /api/cases              – list all cases (summary only)
-GET    /api/cases/latest       – retrieve the most recently saved case
-GET    /api/cases/{id}         – retrieve a specific case
-GET    /api/cases/{id}/file    – stream the stored data file
-DELETE /api/cases/{id}         – delete a case
+POST   /api/cases                  – save a new case (config + optional file)
+GET    /api/cases                  – list all cases (summary only)
+GET    /api/cases/latest           – retrieve the most recently saved case
+GET    /api/cases/{id}             – retrieve a specific case
+GET    /api/cases/{id}/file        – stream the stored data file
+PUT    /api/cases/{id}             – update an existing case
+DELETE /api/cases/{id}             – delete a case
+POST   /api/cases/claim-unassigned – assign pre-auth cases to the current user
 """
 
 from __future__ import annotations
@@ -16,11 +18,13 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
+from backend.auth import get_current_user
 from backend.database import (
     FILES_DIR,
+    claim_unassigned_cases,
     delete_case,
     get_case,
     get_latest_case,
@@ -35,14 +39,26 @@ router = APIRouter(prefix="/api/cases", tags=["cases"])
 
 
 # ---------------------------------------------------------------------------
+# Claim unassigned (called once on first login to adopt pre-auth data)
+# ---------------------------------------------------------------------------
+
+@router.post("/claim-unassigned")
+def claim_cases(current_user: str = Depends(get_current_user)):
+    """Assign any ownerless cases (user_id='') to the authenticated user."""
+    claimed = claim_unassigned_cases(current_user)
+    return {"claimed": claimed}
+
+
+# ---------------------------------------------------------------------------
 # Save
 # ---------------------------------------------------------------------------
 
 @router.post("")
 async def create_case(
-    config: str           = Form(...),
-    name:   str           = Form(default=""),
-    file:   Optional[UploadFile] = File(default=None),
+    config:       str                  = Form(...),
+    name:         str                  = Form(default=""),
+    file:         Optional[UploadFile] = File(default=None),
+    current_user: str                  = Depends(get_current_user),
 ):
     """Save the current form inputs (and optionally the data file)."""
     try:
@@ -50,8 +66,7 @@ async def create_case(
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=422, detail=f"Invalid config JSON: {exc}")
 
-    # Insert the row first to obtain the case_id (used as the file directory)
-    case_id = save_case(config=config_dict, name=name)
+    case_id = save_case(config=config_dict, name=name, user_id=current_user)
 
     if file and file.filename:
         file_dir = FILES_DIR / str(case_id)
@@ -73,10 +88,11 @@ async def create_case(
 
 @router.put("/{case_id}")
 async def update_case_endpoint(
-    case_id: int,
-    config:  str                  = Form(...),
-    name:    str                  = Form(default=""),
-    file:    Optional[UploadFile] = File(default=None),
+    case_id:      int,
+    config:       str                  = Form(...),
+    name:         str                  = Form(default=""),
+    file:         Optional[UploadFile] = File(default=None),
+    current_user: str                  = Depends(get_current_user),
 ):
     """Update an existing case's config/name and optionally replace its data file."""
     try:
@@ -84,7 +100,7 @@ async def update_case_endpoint(
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=422, detail=f"Invalid config JSON: {exc}")
 
-    if not update_case(case_id, config_dict, name):
+    if not update_case(case_id, config_dict, name, user_id=current_user):
         raise HTTPException(status_code=404, detail="Case not found")
 
     if file and file.filename:
@@ -106,9 +122,9 @@ async def update_case_endpoint(
 # ---------------------------------------------------------------------------
 
 @router.get("")
-def get_cases():
-    """Return a summary list of all saved cases (newest first)."""
-    return list_cases()
+def get_cases(current_user: str = Depends(get_current_user)):
+    """Return a summary list of all cases owned by the current user (newest first)."""
+    return list_cases(current_user)
 
 
 # ---------------------------------------------------------------------------
@@ -116,17 +132,17 @@ def get_cases():
 # ---------------------------------------------------------------------------
 
 @router.get("/latest")
-def retrieve_latest():
-    """Return the most recently saved case, or 404 if none exist."""
-    case = get_latest_case()
+def retrieve_latest(current_user: str = Depends(get_current_user)):
+    """Return the most recently saved case for the current user, or 404 if none."""
+    case = get_latest_case(current_user)
     if case is None:
         raise HTTPException(status_code=404, detail="No saved cases found")
     return case
 
 
 @router.get("/{case_id}")
-def retrieve_case(case_id: int):
-    case = get_case(case_id)
+def retrieve_case(case_id: int, current_user: str = Depends(get_current_user)):
+    case = get_case(case_id, current_user)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
     return case
@@ -137,9 +153,9 @@ def retrieve_case(case_id: int):
 # ---------------------------------------------------------------------------
 
 @router.get("/{case_id}/file")
-def download_file(case_id: int):
+def download_file(case_id: int, current_user: str = Depends(get_current_user)):
     """Stream the stored data file for this case."""
-    case = get_case(case_id)
+    case = get_case(case_id, current_user)
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
     if not case.get("has_file"):
@@ -158,7 +174,7 @@ def download_file(case_id: int):
 # ---------------------------------------------------------------------------
 
 @router.delete("/{case_id}")
-def remove_case(case_id: int):
-    if not delete_case(case_id):
+def remove_case(case_id: int, current_user: str = Depends(get_current_user)):
+    if not delete_case(case_id, current_user):
         raise HTTPException(status_code=404, detail="Case not found")
     return {"deleted": case_id}

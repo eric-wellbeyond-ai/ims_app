@@ -5,9 +5,10 @@ import tempfile
 import traceback
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
+from backend.auth import get_current_user
 from backend.schemas import AnalysisRequest, AnalysisResponse, PhaseResult
 from backend.services.analysis_service import run_analysis, get_cached_result
 
@@ -18,8 +19,9 @@ router = APIRouter()
 
 @router.post("/api/analyze", response_model=AnalysisResponse)
 async def analyze(
-    file: UploadFile = File(...),
-    config: str = Form(...),
+    file:         UploadFile = File(...),
+    config:       str        = Form(...),
+    _current_user: str       = Depends(get_current_user),
 ):
     """Run MPFM validation analysis on an uploaded spreadsheet."""
     logger.info("Received analysis request")
@@ -76,7 +78,7 @@ async def analyze(
 
 
 @router.get("/api/export/{session_id}")
-async def export_csv(session_id: str):
+async def export_csv(session_id: str, _current_user: str = Depends(get_current_user)):
     """Export the comparison summary as a CSV file."""
     cached = get_cached_result(session_id)
     if not cached:

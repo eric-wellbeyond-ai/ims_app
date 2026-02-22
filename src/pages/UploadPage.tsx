@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useAuthFetch, type AuthFetch } from "../auth/useAuthFetch";
 import { useNavigate } from "react-router-dom";
 import {
   Container,
@@ -61,17 +62,21 @@ type FormSnapshot = {
 };
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers (accept authFetch so auth headers are always included)
 // ---------------------------------------------------------------------------
-async function fetchLatestCase(): Promise<SavedCase | null> {
-  const res = await fetch("/api/cases/latest");
+async function fetchLatestCase(authFetch: AuthFetch): Promise<SavedCase | null> {
+  const res = await authFetch("/api/cases/latest");
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Failed to fetch latest case: ${res.status}`);
   return res.json();
 }
 
-async function fetchCaseFile(caseId: number, fileName: string): Promise<File> {
-  const res = await fetch(`/api/cases/${caseId}/file`);
+async function fetchCaseFile(
+  authFetch: AuthFetch,
+  caseId: number,
+  fileName: string,
+): Promise<File> {
+  const res = await authFetch(`/api/cases/${caseId}/file`);
   if (!res.ok) throw new Error(`Failed to fetch file: ${res.status}`);
   const blob = await res.blob();
   return new File([blob], fileName, { type: blob.type || "application/octet-stream" });
@@ -83,6 +88,7 @@ async function fetchCaseFile(caseId: number, fileName: string): Promise<File> {
 export default function UploadPage() {
   const navigate = useNavigate();
   const { runAnalysis, loading, error } = useAnalysis();
+  const authFetch = useAuthFetch();
 
   // Form state
   const [file, setFile]             = useState<File | null>(null);
@@ -131,7 +137,7 @@ export default function UploadPage() {
         if (includeFile && file) form.append("file", file);
 
         if (loadedCaseId !== null) {
-          const res = await fetch(`/api/cases/${loadedCaseId}`, {
+          const res = await authFetch(`/api/cases/${loadedCaseId}`, {
             method: "PUT",
             body: form,
           });
@@ -139,7 +145,7 @@ export default function UploadPage() {
         } else {
           // First save — always include file
           if (file && !includeFile) form.append("file", file);
-          const res = await fetch("/api/cases", { method: "POST", body: form });
+          const res = await authFetch("/api/cases", { method: "POST", body: form });
           if (!res.ok) throw new Error(`Save failed: ${res.status}`);
           const { id } = await res.json();
           setLoadedCaseId(id);
@@ -158,7 +164,7 @@ export default function UploadPage() {
         isSavingRef.current = false;
       }
     },
-    [pvt, testStart, testEnd, waterCutSamples, pvtUnc, channelUnc, aggregation, caseName, file, loadedCaseId],
+    [pvt, testStart, testEnd, waterCutSamples, pvtUnc, channelUnc, aggregation, caseName, file, loadedCaseId, authFetch],
   );
 
   // Keep a ref that always points to the latest performSaveCore (for autosave timer)
@@ -183,7 +189,7 @@ export default function UploadPage() {
 
     if (saved.has_file && saved.file_name) {
       try {
-        const f = await fetchCaseFile(saved.id, saved.file_name);
+        const f = await fetchCaseFile(authFetch, saved.id, saved.file_name);
         setFile(f);
       } catch {
         // Non-fatal — user can re-upload
@@ -206,19 +212,20 @@ export default function UploadPage() {
 
     // Re-enable autosave after React has flushed the state updates
     setTimeout(() => { autosaveEnabledRef.current = true; }, 200);
-  }, []);
+  }, [authFetch]);
 
   // ---------------------------------------------------------------------------
   // Auto-load last case on mount
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    fetchLatestCase()
+    fetchLatestCase(authFetch)
       .then((saved) => { if (saved) return applyCase(saved); })
       .catch(() => {/* no cases yet — start blank */})
       .finally(() => {
-        // If applyCase was skipped (no saved case), still enable autosave
         setTimeout(() => { autosaveEnabledRef.current = true; }, 200);
       });
+  // authFetch reference is stable after login; run once
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applyCase]);
 
   // ---------------------------------------------------------------------------
@@ -250,7 +257,7 @@ export default function UploadPage() {
   const handleLoadLast = async () => {
     setLoadingCase(true);
     try {
-      const saved = await fetchLatestCase();
+      const saved = await fetchLatestCase(authFetch);
       if (!saved) { setSnackbar("No saved cases found."); return; }
       await applyCase(saved);
       setSnackbar(`Loaded: ${saved.name}`);

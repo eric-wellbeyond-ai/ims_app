@@ -3,15 +3,20 @@ SQLite persistence layer for saved validation cases.
 
 Database:   ims_app/data/cases.db
 File store: ims_app/data/case_files/{case_id}/{original_filename}
+
+All queries are scoped by user_id (format: "{tenant_id}:{object_id}" from Azure AD).
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # Paths relative to the ims_app/ root (two levels up from backend/)
 _BACKEND_DIR = Path(__file__).parent
@@ -31,7 +36,8 @@ CREATE TABLE IF NOT EXISTS cases (
     created_at  TEXT    NOT NULL,
     config      TEXT    NOT NULL,
     file_name   TEXT,
-    file_path   TEXT
+    file_path   TEXT,
+    user_id     TEXT    NOT NULL DEFAULT ''
 );
 """
 
@@ -44,10 +50,26 @@ def _connect() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Create tables if they don't exist.  Safe to call on every startup."""
+    """Create tables and run migrations.  Safe to call on every startup."""
     with _connect() as conn:
         conn.executescript(_DDL)
         conn.commit()
+    _migrate()
+
+
+def _migrate() -> None:
+    """Add new columns to existing tables without data loss."""
+    with _connect() as conn:
+        existing_cols = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(cases)").fetchall()
+        }
+        if "user_id" not in existing_cols:
+            conn.execute(
+                "ALTER TABLE cases ADD COLUMN user_id TEXT NOT NULL DEFAULT ''"
+            )
+            conn.commit()
+            logger.info("Migration: added user_id column to cases table")
 
 
 # ---------------------------------------------------------------------------
@@ -56,9 +78,10 @@ def init_db() -> None:
 
 def save_case(
     config:    dict,
+    name:      str,
+    user_id:   str,
     file_name: Optional[str] = None,
     file_path: Optional[str] = None,
-    name:      str           = "",
 ) -> int:
     """Insert a new case row.  Returns the new row id."""
     if not name:
@@ -66,9 +89,9 @@ def save_case(
     created_at = datetime.now(timezone.utc).isoformat()
     with _connect() as conn:
         cur = conn.execute(
-            "INSERT INTO cases (name, created_at, config, file_name, file_path) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (name, created_at, json.dumps(config), file_name, file_path),
+            "INSERT INTO cases (name, created_at, config, file_name, file_path, user_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (name, created_at, json.dumps(config), file_name, file_path, user_id),
         )
         conn.commit()
         return cur.lastrowid
@@ -78,19 +101,25 @@ def update_case(
     case_id:   int,
     config:    dict,
     name:      str,
+    user_id:   str,
     file_name: Optional[str] = None,
     file_path: Optional[str] = None,
 ) -> bool:
-    """Update config and name of an existing case.  Returns True if the row existed."""
-    case = get_case(case_id)
-    if case is None:
-        return False
+    """Update config and name of an existing case owned by user_id.
+    Returns True if the row existed and was updated."""
     with _connect() as conn:
+        row = conn.execute(
+            "SELECT id FROM cases WHERE id = ? AND user_id = ?",
+            (case_id, user_id),
+        ).fetchone()
+        if row is None:
+            return False
         conn.execute(
-            "UPDATE cases SET config = ?, name = ? WHERE id = ?",
-            (json.dumps(config), name, case_id),
+            "UPDATE cases SET config = ?, name = ? WHERE id = ? AND user_id = ?",
+            (json.dumps(config), name, case_id, user_id),
         )
         conn.commit()
+
     if file_name is not None and file_path is not None:
         update_case_file(case_id, file_name, file_path)
     return True
@@ -106,53 +135,74 @@ def update_case_file(case_id: int, file_name: str, file_path: str) -> None:
         conn.commit()
 
 
-def get_case(case_id: int) -> dict | None:
+def get_case(case_id: int, user_id: str) -> Optional[dict]:
     with _connect() as conn:
         row = conn.execute(
-            "SELECT * FROM cases WHERE id = ?", (case_id,)
+            "SELECT * FROM cases WHERE id = ? AND user_id = ?",
+            (case_id, user_id),
         ).fetchone()
     if row is None:
         return None
     return _row_to_dict(row)
 
 
-def get_latest_case() -> dict | None:
+def get_latest_case(user_id: str) -> Optional[dict]:
     with _connect() as conn:
         row = conn.execute(
-            "SELECT * FROM cases ORDER BY id DESC LIMIT 1"
+            "SELECT * FROM cases WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+            (user_id,),
         ).fetchone()
     if row is None:
         return None
     return _row_to_dict(row)
 
 
-def list_cases() -> list[dict]:
+def list_cases(user_id: str) -> list[dict]:
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT id, name, created_at, file_name FROM cases ORDER BY id DESC"
+            "SELECT id, name, created_at, file_name FROM cases "
+            "WHERE user_id = ? ORDER BY id DESC",
+            (user_id,),
         ).fetchall()
     return [dict(r) for r in rows]
 
 
-def delete_case(case_id: int) -> bool:
+def delete_case(case_id: int, user_id: str) -> bool:
     """Delete a case and its stored file.  Returns True if the row existed."""
-    case = get_case(case_id)
+    case = get_case(case_id, user_id)
     if case is None:
         return False
-    # Remove stored file
     if case.get("file_path"):
         fp = Path(case["file_path"])
         if fp.exists():
             fp.unlink()
-        # Remove parent dir if empty
         try:
             fp.parent.rmdir()
         except OSError:
             pass
     with _connect() as conn:
-        conn.execute("DELETE FROM cases WHERE id = ?", (case_id,))
+        conn.execute(
+            "DELETE FROM cases WHERE id = ? AND user_id = ?",
+            (case_id, user_id),
+        )
         conn.commit()
     return True
+
+
+def claim_unassigned_cases(user_id: str) -> int:
+    """Assign all cases with no owner (user_id='') to user_id.
+    Called once after first login to preserve any pre-auth data.
+    Returns the number of cases claimed."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE cases SET user_id = ? WHERE user_id = ''",
+            (user_id,),
+        )
+        conn.commit()
+        count = cur.rowcount
+    if count:
+        logger.info("Claimed %d unassigned case(s) for user %s", count, user_id[:8] + "…")
+    return count
 
 
 # ---------------------------------------------------------------------------
