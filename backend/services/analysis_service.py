@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import uuid
 import logging
 from pathlib import Path
@@ -10,13 +9,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Add the algorithm directory to the path
-ALGO_DIR = str(Path(__file__).resolve().parent.parent.parent.parent / "claude_algo")
-logger.info("Algorithm directory: %s (exists: %s)", ALGO_DIR, Path(ALGO_DIR).exists())
-if ALGO_DIR not in sys.path:
-    sys.path.insert(0, ALGO_DIR)
-
-from mpfm_analysis import (
+from backend.mpfm_analysis import (
     read_timeseries,
     filter_test_window,
     compute_derived_columns,

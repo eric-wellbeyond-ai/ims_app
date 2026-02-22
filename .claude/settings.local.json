@@ -7,7 +7,9 @@
       "Bash(python:*)",
       "Bash(pip3 install:*)",
       "Bash(/Users/esmith/Developer/IMS/claude_algo/venv/bin/python:*)",
-      "Bash(/Users/esmith/Developer/IMS/claude_algo/venv/bin/pip install fastapi \"uvicorn[standard]\" python-multipart scipy)"
+      "Bash(/Users/esmith/Developer/IMS/claude_algo/venv/bin/pip install fastapi \"uvicorn[standard]\" python-multipart scipy)",
+      "Bash(git -C /Users/esmith/Developer/IMS/claude_algo status)",
+      "Bash(/Users/esmith/Developer/IMS/claude_algo/venv/bin/pip list:*)"
     ]
   }
 }
