@@ -158,9 +158,9 @@ def compute_derived_columns(
     out["sep_flash_gas"]         = out["sep_oil_std"] * pvt.flash_factor / 1000.0  # mscf/day
     out["sep_gas_std"]           = out["sep_gas"] + out["sep_flash_gas"]
 
-    # --- Water cut ---
-    out["mpfm_wc"] = out["mpfm_water"] / out["mpfm_liquid"]
-    out["sep_wc"]  = out["sep_free_water"] / out["sep_liquid_std"]
+    # --- Water cut (%) ---
+    out["mpfm_wc"] = (out["mpfm_water"] / out["mpfm_liquid"]) * 100.0
+    out["sep_wc"]  = (out["sep_free_water"] / out["sep_liquid_std"]) * 100.0
 
     # --- GOR (scf/stb) ---
     out["mpfm_gor"] = out["mpfm_gas"] * 1000.0 / out["mpfm_oil"]
@@ -258,11 +258,11 @@ def compute_uncertainty_columns(
     out["sigma_mpfm_wc"] = np.sqrt(
         (out["sigma_mpfm_water"] / df["mpfm_liquid"]) ** 2
         + (df["mpfm_water"] * out["sigma_mpfm_liquid"] / df["mpfm_liquid"] ** 2) ** 2
-    )
+    ) * 100.0
     out["sigma_sep_wc"] = np.sqrt(
         (sigma_sep_free_water / df["sep_liquid_std"]) ** 2
         + (df["sep_free_water"] * out["sigma_sep_liquid_std"] / df["sep_liquid_std"] ** 2) ** 2
-    )
+    ) * 100.0
 
     # ------------------------------------------------------------------
     # 7. GOR:  gor = gas * 1000 / oil
@@ -315,7 +315,7 @@ def build_comparison_table(
     phases     = ["oil", "gas", "water", "liquid", "wc", "gor"]
     units      = {
         "oil": "STB/day", "gas": "MSCF/day", "water": "STB/day",
-        "liquid": "STB/day", "wc": "fraction", "gor": "SCF/STB",
+        "liquid": "STB/day", "wc": "%", "gor": "SCF/STB",
     }
     acceptance = {
         "oil": 0.05, "gas": 0.05, "water": 0.05,

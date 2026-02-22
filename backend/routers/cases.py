@@ -26,6 +26,7 @@ from backend.database import (
     get_latest_case,
     list_cases,
     save_case,
+    update_case,
     update_case_file,
 )
 
@@ -62,6 +63,40 @@ async def create_case(
         logger.info("Saved case %d with file %s (%d bytes)", case_id, dest, len(content))
     else:
         logger.info("Saved case %d (no file)", case_id)
+
+    return {"id": case_id}
+
+
+# ---------------------------------------------------------------------------
+# Update
+# ---------------------------------------------------------------------------
+
+@router.put("/{case_id}")
+async def update_case_endpoint(
+    case_id: int,
+    config:  str                  = Form(...),
+    name:    str                  = Form(default=""),
+    file:    Optional[UploadFile] = File(default=None),
+):
+    """Update an existing case's config/name and optionally replace its data file."""
+    try:
+        config_dict = json.loads(config)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid config JSON: {exc}")
+
+    if not update_case(case_id, config_dict, name):
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    if file and file.filename:
+        file_dir = FILES_DIR / str(case_id)
+        file_dir.mkdir(parents=True, exist_ok=True)
+        dest = file_dir / file.filename
+        content = await file.read()
+        dest.write_bytes(content)
+        update_case_file(case_id, file.filename, str(dest))
+        logger.info("Updated case %d file → %s (%d bytes)", case_id, dest, len(content))
+    else:
+        logger.info("Updated case %d (config/name only)", case_id)
 
     return {"id": case_id}
 

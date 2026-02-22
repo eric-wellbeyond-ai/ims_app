@@ -49,7 +49,7 @@ export default function WaterCutTable({
           <TableHead>
             <TableRow>
               <TableCell>Sampling Time</TableCell>
-              <TableCell>Water Cut (fraction)</TableCell>
+              <TableCell>Water Cut (%)</TableCell>
               <TableCell width={50} />
             </TableRow>
           </TableHead>
@@ -81,7 +81,7 @@ export default function WaterCutTable({
                       updateRow(i, "value", parseFloat(e.target.value) || 0)
                     }
                     size="small"
-                    inputProps={{ step: 0.01, min: 0, max: 1 }}
+                    inputProps={{ step: 0.1, min: 0, max: 100 }}
                     fullWidth
                   />
                 </TableCell>

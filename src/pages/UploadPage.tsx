@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Container,
@@ -11,10 +11,12 @@ import {
   Divider,
   Tooltip,
   Snackbar,
+  TextField,
 } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SaveIcon from "@mui/icons-material/Save";
 import RestoreIcon from "@mui/icons-material/Restore";
+import UndoIcon from "@mui/icons-material/Undo";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import FileUpload from "../components/FileUpload";
 import PvtForm from "../components/PvtForm";
@@ -38,11 +40,25 @@ import {
 import type { SavedCase } from "../types/case";
 
 // ---------------------------------------------------------------------------
-// Defaults (used for "New Case" reset and initial state before auto-load)
+// Defaults
 // ---------------------------------------------------------------------------
 const DEFAULT_PVT: PVTConfig = { oil_shrinkage: 1.0, flash_factor: 0.0, bsw: 0.0 };
 const DEFAULT_START = "";
 const DEFAULT_END   = "";
+const DEFAULT_NAME  = "New Case";
+
+type SaveStatus = "never-saved" | "saved" | "saving" | "unsaved";
+
+type FormSnapshot = {
+  pvt:              PVTConfig;
+  testStart:        string;
+  testEnd:          string;
+  waterCutSamples:  WaterCutSample[];
+  pvtUnc:           PVTUncertainties;
+  channelUnc:       ChannelUncertainties;
+  aggregation:      MeterAggregationConfig;
+  caseName:         string;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -68,6 +84,7 @@ export default function UploadPage() {
   const navigate = useNavigate();
   const { runAnalysis, loading, error } = useAnalysis();
 
+  // Form state
   const [file, setFile]             = useState<File | null>(null);
   const [pvt, setPvt]               = useState<PVTConfig>(DEFAULT_PVT);
   const [testStart, setTestStart]   = useState(DEFAULT_START);
@@ -78,23 +95,91 @@ export default function UploadPage() {
   const [aggregation, setAggregation] = useState<MeterAggregationConfig>(defaultMeterAggregation());
 
   // Case management state
+  const [caseName, setCaseName]         = useState(DEFAULT_NAME);
   const [loadedCaseId, setLoadedCaseId] = useState<number | null>(null);
+  const [saveStatus, setSaveStatus]     = useState<SaveStatus>("never-saved");
   const [saving, setSaving]             = useState(false);
   const [loadingCase, setLoadingCase]   = useState(false);
   const [snackbar, setSnackbar]         = useState<string | null>(null);
+
+  // Refs
+  const savedSnapshotRef   = useRef<FormSnapshot | null>(null);
+  const autosaveEnabledRef = useRef(false);
+  const isSavingRef        = useRef(false);
+
+  // ---------------------------------------------------------------------------
+  // Save core (create or update; includeFile = false for autosave)
+  // ---------------------------------------------------------------------------
+  const performSaveCore = useCallback(
+    async (includeFile: boolean): Promise<boolean> => {
+      if (isSavingRef.current) return false;
+      isSavingRef.current = true;
+      setSaveStatus("saving");
+      try {
+        const config = {
+          pvt,
+          test_start: testStart,
+          test_end: testEnd,
+          water_cut_samples: waterCutSamples,
+          pvt_uncertainties: pvtUnc,
+          channel_uncertainties: channelUnc,
+          aggregation,
+        };
+        const form = new FormData();
+        form.append("config", JSON.stringify(config));
+        form.append("name", caseName);
+        if (includeFile && file) form.append("file", file);
+
+        if (loadedCaseId !== null) {
+          const res = await fetch(`/api/cases/${loadedCaseId}`, {
+            method: "PUT",
+            body: form,
+          });
+          if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+        } else {
+          // First save — always include file
+          if (file && !includeFile) form.append("file", file);
+          const res = await fetch("/api/cases", { method: "POST", body: form });
+          if (!res.ok) throw new Error(`Save failed: ${res.status}`);
+          const { id } = await res.json();
+          setLoadedCaseId(id);
+        }
+
+        savedSnapshotRef.current = {
+          pvt, testStart, testEnd, waterCutSamples, pvtUnc, channelUnc, aggregation, caseName,
+        };
+        setSaveStatus("saved");
+        return true;
+      } catch (e) {
+        setSaveStatus("unsaved");
+        setSnackbar(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
+        return false;
+      } finally {
+        isSavingRef.current = false;
+      }
+    },
+    [pvt, testStart, testEnd, waterCutSamples, pvtUnc, channelUnc, aggregation, caseName, file, loadedCaseId],
+  );
+
+  // Keep a ref that always points to the latest performSaveCore (for autosave timer)
+  const performSaveCoreRef = useRef(performSaveCore);
+  useEffect(() => { performSaveCoreRef.current = performSaveCore; }, [performSaveCore]);
 
   // ---------------------------------------------------------------------------
   // Apply a saved case to all form fields
   // ---------------------------------------------------------------------------
   const applyCase = useCallback(async (saved: SavedCase) => {
+    autosaveEnabledRef.current = false; // suppress while loading
+
     const cfg = saved.config;
-    if (cfg.pvt)                  setPvt(cfg.pvt);
-    if (cfg.test_start)           setTestStart(cfg.test_start);
-    if (cfg.test_end)             setTestEnd(cfg.test_end);
-    if (cfg.water_cut_samples)    setWaterCutSamples(cfg.water_cut_samples);
-    if (cfg.pvt_uncertainties)    setPvtUnc(cfg.pvt_uncertainties);
+    if (cfg.pvt)                   setPvt(cfg.pvt);
+    if (cfg.test_start)            setTestStart(cfg.test_start);
+    if (cfg.test_end)              setTestEnd(cfg.test_end);
+    if (cfg.water_cut_samples)     setWaterCutSamples(cfg.water_cut_samples);
+    if (cfg.pvt_uncertainties)     setPvtUnc(cfg.pvt_uncertainties);
     if (cfg.channel_uncertainties) setChannelUnc(cfg.channel_uncertainties);
-    if (cfg.aggregation)          setAggregation(cfg.aggregation);
+    if (cfg.aggregation)           setAggregation(cfg.aggregation);
+    setCaseName(saved.name ?? DEFAULT_NAME);
 
     if (saved.has_file && saved.file_name) {
       try {
@@ -106,6 +191,21 @@ export default function UploadPage() {
     }
 
     setLoadedCaseId(saved.id);
+    setSaveStatus("saved");
+
+    savedSnapshotRef.current = {
+      pvt:             cfg.pvt             ?? DEFAULT_PVT,
+      testStart:       cfg.test_start      ?? DEFAULT_START,
+      testEnd:         cfg.test_end        ?? DEFAULT_END,
+      waterCutSamples: cfg.water_cut_samples ?? [],
+      pvtUnc:          cfg.pvt_uncertainties  ?? defaultPVTUncertainties(),
+      channelUnc:      cfg.channel_uncertainties ?? defaultChannelUncertainties(),
+      aggregation:     cfg.aggregation     ?? defaultMeterAggregation(),
+      caseName:        saved.name          ?? DEFAULT_NAME,
+    };
+
+    // Re-enable autosave after React has flushed the state updates
+    setTimeout(() => { autosaveEnabledRef.current = true; }, 200);
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -113,39 +213,35 @@ export default function UploadPage() {
   // ---------------------------------------------------------------------------
   useEffect(() => {
     fetchLatestCase()
-      .then((saved) => { if (saved) applyCase(saved); })
-      .catch(() => {/* no cases yet or server down — start blank */});
+      .then((saved) => { if (saved) return applyCase(saved); })
+      .catch(() => {/* no cases yet — start blank */})
+      .finally(() => {
+        // If applyCase was skipped (no saved case), still enable autosave
+        setTimeout(() => { autosaveEnabledRef.current = true; }, 200);
+      });
   }, [applyCase]);
 
   // ---------------------------------------------------------------------------
-  // Save current case
+  // Autosave — debounce 3 s after any config change
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!autosaveEnabledRef.current) return;
+    setSaveStatus("unsaved");
+    const timer = setTimeout(() => {
+      performSaveCoreRef.current(false);
+    }, 3000);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pvt, testStart, testEnd, waterCutSamples, pvtUnc, channelUnc, aggregation, caseName]);
+
+  // ---------------------------------------------------------------------------
+  // Manual save (includes file)
   // ---------------------------------------------------------------------------
   const handleSave = async () => {
     setSaving(true);
-    try {
-      const config = {
-        pvt,
-        test_start: testStart,
-        test_end: testEnd,
-        water_cut_samples: waterCutSamples,
-        pvt_uncertainties: pvtUnc,
-        channel_uncertainties: channelUnc,
-        aggregation,
-      };
-      const form = new FormData();
-      form.append("config", JSON.stringify(config));
-      if (file) form.append("file", file);
-
-      const res = await fetch("/api/cases", { method: "POST", body: form });
-      if (!res.ok) throw new Error(`Save failed: ${res.status}`);
-      const { id } = await res.json();
-      setLoadedCaseId(id);
-      setSnackbar("Case saved.");
-    } catch (e) {
-      setSnackbar(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setSaving(false);
-    }
+    const ok = await performSaveCoreRef.current(true);
+    if (ok) setSnackbar("Saved.");
+    setSaving(false);
   };
 
   // ---------------------------------------------------------------------------
@@ -166,9 +262,10 @@ export default function UploadPage() {
   };
 
   // ---------------------------------------------------------------------------
-  // New case — reset everything to defaults
+  // New case — reset everything
   // ---------------------------------------------------------------------------
   const handleNew = () => {
+    autosaveEnabledRef.current = false;
     setFile(null);
     setPvt(DEFAULT_PVT);
     setTestStart(DEFAULT_START);
@@ -177,7 +274,30 @@ export default function UploadPage() {
     setPvtUnc(defaultPVTUncertainties());
     setChannelUnc(defaultChannelUncertainties());
     setAggregation(defaultMeterAggregation());
+    setCaseName(DEFAULT_NAME);
     setLoadedCaseId(null);
+    setSaveStatus("never-saved");
+    savedSnapshotRef.current = null;
+    setTimeout(() => { autosaveEnabledRef.current = true; }, 200);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Discard changes — restore last saved snapshot
+  // ---------------------------------------------------------------------------
+  const handleDiscard = () => {
+    const snap = savedSnapshotRef.current;
+    if (!snap) return;
+    autosaveEnabledRef.current = false;
+    setPvt(snap.pvt);
+    setTestStart(snap.testStart);
+    setTestEnd(snap.testEnd);
+    setWaterCutSamples(snap.waterCutSamples);
+    setPvtUnc(snap.pvtUnc);
+    setChannelUnc(snap.channelUnc);
+    setAggregation(snap.aggregation);
+    setCaseName(snap.caseName);
+    setSaveStatus("saved");
+    setTimeout(() => { autosaveEnabledRef.current = true; }, 200);
   };
 
   // ---------------------------------------------------------------------------
@@ -204,22 +324,58 @@ export default function UploadPage() {
   };
 
   // ---------------------------------------------------------------------------
+  // Save status label
+  // ---------------------------------------------------------------------------
+  const statusColor: Record<SaveStatus, string> = {
+    "never-saved": "text.disabled",
+    "saved":       "success.main",
+    "saving":      "text.secondary",
+    "unsaved":     "warning.main",
+  };
+  const statusLabel: Record<SaveStatus, string> = {
+    "never-saved": "",
+    "saved":       "Saved",
+    "saving":      "Saving…",
+    "unsaved":     "Unsaved changes",
+  };
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
-      {/* Header + case management buttons */}
+      {/* Header */}
       <Box sx={{ display: "flex", alignItems: "center", mb: 1, gap: 1, flexWrap: "wrap" }}>
-        <Typography variant="h4" sx={{ flexGrow: 1 }}>
+        <Typography variant="h4" sx={{ flexShrink: 0 }}>
           MPFM Validation
         </Typography>
 
+        {/* Inline case name */}
+        <TextField
+          value={caseName}
+          onChange={(e) => setCaseName(e.target.value)}
+          variant="standard"
+          size="small"
+          sx={{ flexGrow: 1, minWidth: 160, mx: 1 }}
+          inputProps={{ style: { fontWeight: 500 } }}
+        />
+
+        {/* Save status */}
+        <Typography
+          variant="caption"
+          sx={{ color: statusColor[saveStatus], minWidth: 110, textAlign: "right" }}
+        >
+          {saveStatus === "saving" && (
+            <CircularProgress size={10} sx={{ mr: 0.5 }} />
+          )}
+          {statusLabel[saveStatus]}
+        </Typography>
+      </Box>
+
+      {/* Action buttons */}
+      <Box sx={{ display: "flex", gap: 1, mb: 3, flexWrap: "wrap" }}>
         <Tooltip title="Reset all fields to blank defaults">
-          <Button
-            size="small"
-            startIcon={<AddCircleOutlineIcon />}
-            onClick={handleNew}
-          >
+          <Button size="small" startIcon={<AddCircleOutlineIcon />} onClick={handleNew}>
             New Case
           </Button>
         </Tooltip>
@@ -239,7 +395,20 @@ export default function UploadPage() {
           </Button>
         </Tooltip>
 
-        <Tooltip title="Save all current inputs as a new case">
+        {saveStatus === "unsaved" && savedSnapshotRef.current && (
+          <Tooltip title="Discard unsaved changes and revert to last saved state">
+            <Button
+              size="small"
+              color="warning"
+              startIcon={<UndoIcon />}
+              onClick={handleDiscard}
+            >
+              Revert to Saved
+            </Button>
+          </Tooltip>
+        )}
+
+        <Tooltip title="Save all current inputs (including file) immediately">
           <Button
             size="small"
             variant="outlined"
@@ -251,16 +420,10 @@ export default function UploadPage() {
             onClick={handleSave}
             disabled={saving}
           >
-            Save Case
+            Save
           </Button>
         </Tooltip>
       </Box>
-
-      {loadedCaseId !== null && (
-        <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: "block" }}>
-          Working from saved case #{loadedCaseId}
-        </Typography>
-      )}
 
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
         Upload meter trend data and configure fluid properties to run the
@@ -321,10 +484,7 @@ export default function UploadPage() {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Optional: enter spot water cut samples taken during the test period.
         </Typography>
-        <WaterCutTable
-          samples={waterCutSamples}
-          onChange={setWaterCutSamples}
-        />
+        <WaterCutTable samples={waterCutSamples} onChange={setWaterCutSamples} />
       </Paper>
 
       <Divider sx={{ mb: 3 }} />
@@ -339,7 +499,7 @@ export default function UploadPage() {
           onClick={handleSubmit}
           disabled={!canSubmit}
         >
-          {loading ? "Running Analysis..." : "Run Analysis"}
+          {loading ? "Running Analysis…" : "Run Analysis"}
         </Button>
       </Box>
 

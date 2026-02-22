@@ -74,6 +74,28 @@ def save_case(
         return cur.lastrowid
 
 
+def update_case(
+    case_id:   int,
+    config:    dict,
+    name:      str,
+    file_name: Optional[str] = None,
+    file_path: Optional[str] = None,
+) -> bool:
+    """Update config and name of an existing case.  Returns True if the row existed."""
+    case = get_case(case_id)
+    if case is None:
+        return False
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE cases SET config = ?, name = ? WHERE id = ?",
+            (json.dumps(config), name, case_id),
+        )
+        conn.commit()
+    if file_name is not None and file_path is not None:
+        update_case_file(case_id, file_name, file_path)
+    return True
+
+
 def update_case_file(case_id: int, file_name: str, file_path: str) -> None:
     """Attach file metadata to an already-saved case (called after file is written)."""
     with _connect() as conn:
