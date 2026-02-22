@@ -91,10 +91,12 @@ def run_analysis(
         flash_factor=pvt_config.flash_factor,
         bsw=pvt_config.bsw,
     )
-    window = TestWindow(
-        start=pd.Timestamp(test_start),
-        end=pd.Timestamp(test_end),
-    )
+    def _naive(ts) -> pd.Timestamp:
+        """Convert to a tz-naive Timestamp so it can be compared with Excel data."""
+        t = pd.Timestamp(ts)
+        return t.tz_convert(None) if t.tzinfo is not None else t
+
+    window = TestWindow(start=_naive(test_start), end=_naive(test_end))
 
     # Determine if file is CSV or Excel
     ext = Path(filepath).suffix.lower()

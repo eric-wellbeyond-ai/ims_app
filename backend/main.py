@@ -8,7 +8,9 @@ logging.basicConfig(
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routers.analysis import router
+from backend.database import init_db
+from backend.routers.analysis import router as analysis_router
+from backend.routers.cases import router as cases_router
 
 app = FastAPI(title="MPFM Validation API")
 
@@ -20,4 +22,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(router)
+app.include_router(analysis_router)
+app.include_router(cases_router)
+
+
+@app.on_event("startup")
+def on_startup():
+    init_db()

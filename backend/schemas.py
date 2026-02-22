@@ -1,6 +1,6 @@
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 from datetime import datetime
 
@@ -49,6 +49,16 @@ class AnalysisRequest(BaseModel):
     test_end: datetime
     water_cut_samples: list[WaterCutSample] = []
     sheet_name: str = "MPFM VALIDATION DATA"
+
+    @model_validator(mode="before")
+    @classmethod
+    def drop_invalid_water_cut_samples(cls, data):
+        samples = data.get("water_cut_samples", [])
+        data["water_cut_samples"] = [
+            s for s in samples
+            if isinstance(s, dict) and s.get("timestamp")
+        ]
+        return data
     pvt_uncertainties:     PVTUncertainties      = Field(default_factory=lambda: PVTUncertainties())
     channel_uncertainties: ChannelUncertainties = Field(default_factory=lambda: ChannelUncertainties())
     aggregation:           MeterAggregationConfig = Field(default_factory=MeterAggregationConfig)
