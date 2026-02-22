@@ -41,8 +41,8 @@ export default function TimeSeriesChart({ deviations }: TimeSeriesChartProps) {
           />
           <YAxis tickFormatter={(v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 })} />
           <Tooltip
-            labelFormatter={(v: string) =>
-              v ? new Date(v).toLocaleString() : ""
+            labelFormatter={(v) =>
+              typeof v === "string" && v ? new Date(v).toLocaleString() : String(v ?? "")
             }
             formatter={(v: number | undefined) =>
               v != null ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : ""

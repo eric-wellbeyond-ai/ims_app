@@ -58,10 +58,12 @@ export default function DeviationTimeSeries({
             }}
           />
           <Tooltip
-            labelFormatter={(v: string) =>
-              v ? new Date(v).toLocaleString() : ""
+            labelFormatter={(v) =>
+              typeof v === "string" && v ? new Date(v).toLocaleString() : String(v ?? "")
             }
-            formatter={(v: number) => [`${v.toFixed(2)}%`, "Deviation"]}
+            formatter={(v: number | undefined) =>
+              v != null ? [`${v.toFixed(2)}%`, "Deviation"] : ["", "Deviation"]
+            }
           />
           <ReferenceLine y={0} stroke="#000" strokeWidth={0.5} />
           <ReferenceLine

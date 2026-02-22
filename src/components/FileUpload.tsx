@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Box, Typography, Paper } from "@mui/material";
+import { Typography, Paper } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 
 interface FileUploadProps {

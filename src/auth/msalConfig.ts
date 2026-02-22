@@ -12,7 +12,6 @@ export const msalConfig: Configuration = {
   cache: {
     // sessionStorage clears on tab close; use "localStorage" for persistent sessions
     cacheLocation: "sessionStorage",
-    storeAuthStateInCookie: false,
   },
   system: {
     loggerOptions: {

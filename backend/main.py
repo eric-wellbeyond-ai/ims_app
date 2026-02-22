@@ -1,4 +1,6 @@
 import logging
+import os
+from pathlib import Path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -7,6 +9,7 @@ logging.basicConfig(
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from backend.database import init_db
 from backend.routers.analysis import router as analysis_router
@@ -14,9 +17,12 @@ from backend.routers.cases import router as cases_router
 
 app = FastAPI(title="MPFM Validation API")
 
+# In production (Docker) the frontend is served by this same process, so
+# CORS is not needed.  In local dev the Vite server is on :5173.
+_cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,3 +35,11 @@ app.include_router(cases_router)
 @app.on_event("startup")
 def on_startup():
     init_db()
+
+
+# Serve the built React SPA for any path not matched by the API routers above.
+# The "static" directory is created by the Docker build; it does not exist in
+# local dev (where Vite handles the frontend), so we only mount when present.
+_static = Path(__file__).parent.parent / "static"
+if _static.exists():
+    app.mount("/", StaticFiles(directory=str(_static), html=True), name="spa")

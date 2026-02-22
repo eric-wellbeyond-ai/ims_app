@@ -75,12 +75,16 @@ export default function DeviationHistogram({
           />
           <Tooltip />
           <Bar dataKey="count" fill="#1565c0" />
-          <ReferenceLine
-            x={null}
-            stroke="red"
-            strokeDasharray="3 3"
-            label={{ value: `Mean: ${mean.toFixed(2)}%`, position: "top" }}
-          />
+          {bins.length > 0 && (
+            <ReferenceLine
+              x={bins.reduce((prev, curr) =>
+                Math.abs(curr.mid - mean) < Math.abs(prev.mid - mean) ? curr : prev
+              ).bin}
+              stroke="red"
+              strokeDasharray="3 3"
+              label={{ value: `Mean: ${mean.toFixed(2)}%`, position: "top" }}
+            />
+          )}
         </BarChart>
       </ResponsiveContainer>
     </Box>

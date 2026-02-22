@@ -33,8 +33,6 @@ export function useAuthFetch(): AuthFetch {
           account,
         });
         idToken = result.idToken;
-        // DEBUG — remove after diagnosis
-        console.log("[authFetch] idToken length:", idToken?.length ?? 0, "| empty:", !idToken);
       } catch (e) {
         if (e instanceof InteractionRequiredAuthError) {
           await instance.loginRedirect(loginRequest);

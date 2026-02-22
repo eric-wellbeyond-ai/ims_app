@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    ports:
+      - "7432:8000"       # access at http://<imac-ip>:7432
+    volumes:
+      - app_data:/app/data  # SQLite DB + uploaded case files
+    restart: unless-stopped
+    environment:
+      # No CORS needed — frontend and API are served from the same origin.
+      CORS_ORIGINS: ""
+
+volumes:
+  app_data:

@@ -58,15 +58,13 @@ def _fetch_jwks() -> dict[str, object]:
 def _get_public_key(kid: str) -> object:
     """Return the RSA public key for the given key ID, refreshing once if not found."""
     jwks = _fetch_jwks()
-    print(f"[AUTH DEBUG] JWKS has {len(jwks)} keys; looking for kid={kid}; found={kid in jwks}", flush=True)
     if kid in jwks:
         return jwks[kid]
 
     # Key may have just rotated — force a refresh
     global _jwks_fetched_at
-    _jwks_fetched_at = 0.0
+    _jwks_fetched_at = float("-inf")
     jwks = _fetch_jwks()
-    print(f"[AUTH DEBUG] After refresh: JWKS has {len(jwks)} keys; found={kid in jwks}", flush=True)
     if kid not in jwks:
         raise HTTPException(status_code=401, detail="Unknown signing key")
     return jwks[kid]
@@ -92,11 +90,6 @@ def get_current_user(
     try:
         header = jwt.get_unverified_header(token)
         kid: Optional[str] = header.get("kid")
-        # DEBUG — remove before production
-        unverified = jwt.decode(token, options={"verify_signature": False})
-        print(f"[AUTH DEBUG] kid={kid} alg={header.get('alg')} "
-              f"aud={unverified.get('aud')} iss={unverified.get('iss')} "
-              f"has_oid={'oid' in unverified} has_tid={'tid' in unverified}", flush=True)
         if not kid:
             raise HTTPException(status_code=401, detail="Token has no key ID")
 
@@ -120,11 +113,9 @@ def get_current_user(
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError as exc:
-        print(f"[AUTH DEBUG] InvalidTokenError: {exc}", flush=True)
         logger.warning("Token validation failed: %s", exc)
         raise HTTPException(status_code=401, detail="Invalid token")
-    except Exception as exc:
-        print(f"[AUTH DEBUG] Unexpected error: {exc}", flush=True)
+    except Exception:
         logger.exception("Unexpected error during token validation")
         raise HTTPException(status_code=401, detail="Authentication error")
 
@@ -133,6 +124,4 @@ def get_current_user(
     if not oid or not tid:
         raise HTTPException(status_code=401, detail="Token missing oid/tid claims")
 
-    user_id = f"{tid}:{oid}"
-    print(f"[AUTH DEBUG] AUTH OK → user_id={user_id}", flush=True)
-    return user_id
+    return f"{tid}:{oid}"
