@@ -44,6 +44,8 @@ async def analyze(
             req.pvt,
             req.test_start,
             req.test_end,
+            pvt_unc=req.pvt_uncertainties,
+            channel_unc=req.channel_uncertainties,
         )
     except ValueError as e:
         logger.error("Analysis ValueError: %s", e)
@@ -63,6 +65,7 @@ async def analyze(
         comparison=[PhaseResult(**row) for row in result["comparison"]],
         deviations=result["deviations"],
         timeseries=result["timeseries"],
+        sigma_ts=result.get("sigma_ts", []),
         pvt=req.pvt,
         test_start=req.test_start.isoformat(),
         test_end=req.test_end.isoformat(),

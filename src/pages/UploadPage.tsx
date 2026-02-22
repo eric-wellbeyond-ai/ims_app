@@ -13,10 +13,12 @@ import {
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import FileUpload from "../components/FileUpload";
 import PvtForm from "../components/PvtForm";
+import UncertaintyForm from "../components/UncertaintyForm";
 import WaterCutTable from "../components/WaterCutTable";
 import TestWindowPicker from "../components/TestWindowPicker";
 import { useAnalysis } from "../context/AnalysisContext";
-import type { PVTConfig, WaterCutSample } from "../types/analysis";
+import type { PVTConfig, WaterCutSample, PVTUncertainties, ChannelUncertainties } from "../types/analysis";
+import { defaultPVTUncertainties, defaultChannelUncertainties } from "../types/analysis";
 
 export default function UploadPage() {
   const navigate = useNavigate();
@@ -35,6 +37,8 @@ export default function UploadPage() {
     { timestamp: "2025-10-10T20:00:00", value: 0.25 },
     { timestamp: "2025-10-11T02:00:00", value: 0.24 },
   ]);
+  const [pvtUnc, setPvtUnc] = useState<PVTUncertainties>(defaultPVTUncertainties());
+  const [channelUnc, setChannelUnc] = useState<ChannelUncertainties>(defaultChannelUncertainties());
 
   const canSubmit = file && testStart && testEnd && !loading;
 
@@ -46,6 +50,8 @@ export default function UploadPage() {
         test_start: testStart,
         test_end: testEnd,
         water_cut_samples: waterCutSamples,
+        pvt_uncertainties: pvtUnc,
+        channel_uncertainties: channelUnc,
       });
       navigate("/dashboard");
     } catch {
@@ -80,7 +86,11 @@ export default function UploadPage() {
         <Typography variant="h6" gutterBottom>
           Fluid Properties (PVT)
         </Typography>
-        <PvtForm pvt={pvt} onChange={setPvt} />
+        <PvtForm pvt={pvt} onChange={setPvt} pvtUnc={pvtUnc} onUncChange={setPvtUnc} />
+      </Paper>
+
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <UncertaintyForm unc={channelUnc} onChange={setChannelUnc} />
       </Paper>
 
       <Paper sx={{ p: 3, mb: 3 }}>

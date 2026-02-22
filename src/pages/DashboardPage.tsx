@@ -106,7 +106,7 @@ export default function DashboardPage() {
             <Typography variant="h6" gutterBottom>
               Cross-Plot
             </Typography>
-            <CrossPlot deviations={result.deviations} />
+            <CrossPlot deviations={result.deviations} sigmaTsRows={result.sigma_ts ?? []} />
           </Paper>
         </Grid>
       </Grid>

@@ -20,13 +20,15 @@ from mpfm_analysis import (
     read_timeseries,
     filter_test_window,
     compute_derived_columns,
+    compute_uncertainty_columns,
     compute_deviations,
     build_comparison_table,
     PVTProperties,
     TestWindow,
+    MeasurementUncertainties,
 )
 
-from backend.schemas import PVTConfig
+from backend.schemas import PVTConfig, PVTUncertainties, ChannelUncertainties
 
 # In-memory cache for export (keyed by session_id)
 _result_cache: dict[str, dict] = {}
@@ -67,6 +69,8 @@ def run_analysis(
     pvt_config: PVTConfig,
     test_start,
     test_end,
+    pvt_unc: PVTUncertainties | None = None,
+    channel_unc: ChannelUncertainties | None = None,
 ) -> dict:
     """
     Run the MPFM validation analysis using user-provided config.
@@ -113,7 +117,36 @@ def run_analysis(
     devs = compute_deviations(ts)
     logger.info("Deviations computed: %d rows", len(devs))
 
-    comparison = build_comparison_table(ts, devs)
+    # Build uncertainty container (convert % → fraction)
+    if pvt_unc is None:
+        pvt_unc = PVTUncertainties()
+    if channel_unc is None:
+        channel_unc = ChannelUncertainties()
+
+    unc = MeasurementUncertainties(
+        r_sep_liquid=channel_unc.sep_liquid_pct / 100.0,
+        r_sep_gas=channel_unc.sep_gas_pct / 100.0,
+        r_mpfm_oil=channel_unc.mpfm_oil_pct / 100.0,
+        r_mpfm_gas=channel_unc.mpfm_gas_pct / 100.0,
+        r_mpfm_water=channel_unc.mpfm_water_pct / 100.0,
+        r_bsw=pvt_unc.bsw_pct / 100.0,
+        r_oil_shrinkage=pvt_unc.oil_shrinkage_pct / 100.0,
+        r_flash_factor=pvt_unc.flash_factor_pct / 100.0,
+    )
+
+    all_zero = all(v == 0.0 for v in [
+        unc.r_sep_liquid, unc.r_sep_gas,
+        unc.r_mpfm_oil, unc.r_mpfm_gas, unc.r_mpfm_water,
+        unc.r_bsw, unc.r_oil_shrinkage, unc.r_flash_factor,
+    ])
+    if all_zero:
+        sigma_ts = pd.DataFrame(index=ts.index)
+        logger.info("All uncertainties are zero — skipping propagation.")
+    else:
+        sigma_ts = compute_uncertainty_columns(ts, pvt, unc)
+        logger.info("Uncertainty columns computed.")
+
+    comparison = build_comparison_table(ts, devs, sigma_df=sigma_ts if not sigma_ts.empty else None)
     logger.info("Comparison table:\n%s", comparison.to_string())
 
     session_id = str(uuid.uuid4())
@@ -121,6 +154,7 @@ def run_analysis(
         "comparison": comparison,
         "deviations": devs,
         "timeseries": ts,
+        "sigma_ts": sigma_ts,
     }
 
     # Sanitize comparison records (handles NaN acceptance_limit, None within_acceptance)
@@ -133,6 +167,7 @@ def run_analysis(
         "comparison": comp_records,
         "deviations": _df_to_records(devs),
         "timeseries": _df_to_records(ts),
+        "sigma_ts": _df_to_records(sigma_ts) if not sigma_ts.empty else [],
         "n_samples": len(ts),
         "session_id": session_id,
     }
