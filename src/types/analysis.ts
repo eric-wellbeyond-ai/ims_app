@@ -1,3 +1,14 @@
+export type AggregationMode = "sum" | "by_difference";
+
+export interface MeterAggregationConfig {
+  mode: AggregationMode;
+  meter_ids: string[];
+}
+
+export function defaultMeterAggregation(): MeterAggregationConfig {
+  return { mode: "sum", meter_ids: ["mpfm1", "mpfm2", "mpfm3"] };
+}
+
 export interface PVTConfig {
   oil_shrinkage: number;
   flash_factor: number;
@@ -45,6 +56,7 @@ export interface AnalysisRequest {
   sheet_name?: string;
   pvt_uncertainties?: PVTUncertainties;
   channel_uncertainties?: ChannelUncertainties;
+  aggregation?: MeterAggregationConfig;
 }
 
 export interface PhaseResult {

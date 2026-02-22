@@ -9,8 +9,8 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+from backend.bespoke_parser import read_timeseries
 from backend.mpfm_analysis import (
-    read_timeseries,
     filter_test_window,
     compute_derived_columns,
     compute_uncertainty_columns,
@@ -19,9 +19,16 @@ from backend.mpfm_analysis import (
     PVTProperties,
     TestWindow,
     MeasurementUncertainties,
+    MeterAggregation,
+    AggregationMode,
 )
 
-from backend.schemas import PVTConfig, PVTUncertainties, ChannelUncertainties
+from backend.schemas import (
+    PVTConfig,
+    PVTUncertainties,
+    ChannelUncertainties,
+    MeterAggregationConfig,
+)
 
 # In-memory cache for export (keyed by session_id)
 _result_cache: dict[str, dict] = {}
@@ -64,6 +71,7 @@ def run_analysis(
     test_end,
     pvt_unc: PVTUncertainties | None = None,
     channel_unc: ChannelUncertainties | None = None,
+    agg_config: MeterAggregationConfig | None = None,
 ) -> dict:
     """
     Run the MPFM validation analysis using user-provided config.
@@ -104,7 +112,13 @@ def run_analysis(
     ts = filter_test_window(raw, window)
     logger.info("Filtered to test window: %d rows", len(ts))
 
-    ts = compute_derived_columns(ts, pvt)
+    agg = MeterAggregation(
+        mode=AggregationMode(agg_config.mode) if agg_config else AggregationMode.SUM,
+        meter_ids=agg_config.meter_ids if agg_config else ["mpfm1", "mpfm2", "mpfm3"],
+    )
+    logger.info("Aggregation: mode=%s, meters=%s", agg.mode, agg.meter_ids)
+
+    ts = compute_derived_columns(ts, pvt, agg=agg)
     logger.info("Derived columns computed. Columns: %s", list(ts.columns))
 
     devs = compute_deviations(ts)
@@ -136,7 +150,7 @@ def run_analysis(
         sigma_ts = pd.DataFrame(index=ts.index)
         logger.info("All uncertainties are zero — skipping propagation.")
     else:
-        sigma_ts = compute_uncertainty_columns(ts, pvt, unc)
+        sigma_ts = compute_uncertainty_columns(ts, pvt, unc, agg=agg)
         logger.info("Uncertainty columns computed.")
 
     comparison = build_comparison_table(ts, devs, sigma_df=sigma_ts if not sigma_ts.empty else None)

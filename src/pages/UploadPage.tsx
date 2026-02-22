@@ -14,11 +14,22 @@ import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import FileUpload from "../components/FileUpload";
 import PvtForm from "../components/PvtForm";
 import UncertaintyForm from "../components/UncertaintyForm";
+import AggregationForm from "../components/AggregationForm";
 import WaterCutTable from "../components/WaterCutTable";
 import TestWindowPicker from "../components/TestWindowPicker";
 import { useAnalysis } from "../context/AnalysisContext";
-import type { PVTConfig, WaterCutSample, PVTUncertainties, ChannelUncertainties } from "../types/analysis";
-import { defaultPVTUncertainties, defaultChannelUncertainties } from "../types/analysis";
+import type {
+  PVTConfig,
+  WaterCutSample,
+  PVTUncertainties,
+  ChannelUncertainties,
+  MeterAggregationConfig,
+} from "../types/analysis";
+import {
+  defaultPVTUncertainties,
+  defaultChannelUncertainties,
+  defaultMeterAggregation,
+} from "../types/analysis";
 
 export default function UploadPage() {
   const navigate = useNavigate();
@@ -39,6 +50,7 @@ export default function UploadPage() {
   ]);
   const [pvtUnc, setPvtUnc] = useState<PVTUncertainties>(defaultPVTUncertainties());
   const [channelUnc, setChannelUnc] = useState<ChannelUncertainties>(defaultChannelUncertainties());
+  const [aggregation, setAggregation] = useState<MeterAggregationConfig>(defaultMeterAggregation());
 
   const canSubmit = file && testStart && testEnd && !loading;
 
@@ -52,6 +64,7 @@ export default function UploadPage() {
         water_cut_samples: waterCutSamples,
         pvt_uncertainties: pvtUnc,
         channel_uncertainties: channelUnc,
+        aggregation,
       });
       navigate("/dashboard");
     } catch {
@@ -87,6 +100,17 @@ export default function UploadPage() {
           Fluid Properties (PVT)
         </Typography>
         <PvtForm pvt={pvt} onChange={setPvt} pvtUnc={pvtUnc} onUncChange={setPvtUnc} />
+      </Paper>
+
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Meter Aggregation
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Choose how individual meter readings are combined into a single MPFM
+          value for comparison against the reference.
+        </Typography>
+        <AggregationForm config={aggregation} onChange={setAggregation} />
       </Paper>
 
       <Paper sx={{ p: 3, mb: 3 }}>

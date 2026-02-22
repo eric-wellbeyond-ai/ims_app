@@ -1,6 +1,21 @@
+from enum import Enum
+
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
+
+
+class AggregationMode(str, Enum):
+    SUM           = "sum"
+    BY_DIFFERENCE = "by_difference"
+
+
+class MeterAggregationConfig(BaseModel):
+    """Which meters to combine and how."""
+    mode:      AggregationMode = AggregationMode.SUM
+    meter_ids: list[str]       = Field(
+        default_factory=lambda: ["mpfm1", "mpfm2", "mpfm3"]
+    )
 
 
 class PVTConfig(BaseModel):
@@ -34,8 +49,9 @@ class AnalysisRequest(BaseModel):
     test_end: datetime
     water_cut_samples: list[WaterCutSample] = []
     sheet_name: str = "MPFM VALIDATION DATA"
-    pvt_uncertainties:     PVTUncertainties     = Field(default_factory=lambda: PVTUncertainties())
+    pvt_uncertainties:     PVTUncertainties      = Field(default_factory=lambda: PVTUncertainties())
     channel_uncertainties: ChannelUncertainties = Field(default_factory=lambda: ChannelUncertainties())
+    aggregation:           MeterAggregationConfig = Field(default_factory=MeterAggregationConfig)
 
 
 class PhaseResult(BaseModel):

@@ -46,6 +46,7 @@ async def analyze(
             req.test_end,
             pvt_unc=req.pvt_uncertainties,
             channel_unc=req.channel_uncertainties,
+            agg_config=req.aggregation,
         )
     except ValueError as e:
         logger.error("Analysis ValueError: %s", e)
