@@ -26,7 +26,7 @@ CLIENT_ID = "ae1fa56e-61ae-4e34-a490-2e413ade8b8d"
 
 # Multi-tenant JWKS endpoint (returns keys for all tenants)
 _JWKS_URL = "https://login.microsoftonline.com/common/discovery/v2.0/keys"
-_JWKS_TTL = 3600.0  # seconds — keys rotate infrequently
+_JWKS_TTL = 48*3600.0  # seconds — keys rotate infrequently
 
 # ---------------------------------------------------------------------------
 # JWKS key cache
