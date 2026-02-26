@@ -30,8 +30,9 @@ from backend.schemas import (
     MeterAggregationConfig,
 )
 
-# In-memory cache for export (keyed by session_id)
-_result_cache: dict[str, dict] = {}
+# In-memory cache for export (keyed by (user_id, session_id) to prevent
+# cross-user access — a session_id alone is not sufficient authorisation)
+_result_cache: dict[tuple[str, str], dict] = {}
 
 
 def _sanitize_value(v):
@@ -69,6 +70,7 @@ def run_analysis(
     pvt_config: PVTConfig,
     test_start,
     test_end,
+    user_id: str = "",
     pvt_unc: PVTUncertainties | None = None,
     channel_unc: ChannelUncertainties | None = None,
     agg_config: MeterAggregationConfig | None = None,
@@ -159,7 +161,7 @@ def run_analysis(
     logger.info("Comparison table:\n%s", comparison.to_string())
 
     session_id = str(uuid.uuid4())
-    _result_cache[session_id] = {
+    _result_cache[(user_id, session_id)] = {
         "comparison": comparison,
         "deviations": devs,
         "timeseries": ts,
@@ -200,5 +202,5 @@ def _read_csv(filepath: str) -> pd.DataFrame:
     return df
 
 
-def get_cached_result(session_id: str) -> dict | None:
-    return _result_cache.get(session_id)
+def get_cached_result(session_id: str, user_id: str) -> dict | None:
+    return _result_cache.get((user_id, session_id))

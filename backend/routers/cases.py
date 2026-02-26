@@ -15,8 +15,23 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from pathlib import Path
 from typing import Optional
+
+_ALLOWED_EXTENSIONS = {".xlsx", ".csv"}
+
+
+def _safe_upload_name(original: str) -> str:
+    """Return a UUID-based filename with a whitelisted extension.
+
+    The original filename is stored only for display (file_name column),
+    never used as a filesystem path component.
+    """
+    suffix = Path(original).suffix.lower()
+    if suffix not in _ALLOWED_EXTENSIONS:
+        suffix = ".xlsx"
+    return f"{uuid.uuid4()}{suffix}"
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -71,7 +86,8 @@ async def create_case(
     if file and file.filename:
         file_dir = FILES_DIR / str(case_id)
         file_dir.mkdir(parents=True, exist_ok=True)
-        dest = file_dir / file.filename
+        safe_name = _safe_upload_name(file.filename)
+        dest = file_dir / safe_name
         content = await file.read()
         dest.write_bytes(content)
         update_case_file(case_id, file.filename, str(dest))
@@ -106,7 +122,8 @@ async def update_case_endpoint(
     if file and file.filename:
         file_dir = FILES_DIR / str(case_id)
         file_dir.mkdir(parents=True, exist_ok=True)
-        dest = file_dir / file.filename
+        safe_name = _safe_upload_name(file.filename)
+        dest = file_dir / safe_name
         content = await file.read()
         dest.write_bytes(content)
         update_case_file(case_id, file.filename, str(dest))
@@ -161,7 +178,13 @@ def download_file(case_id: int, current_user: str = Depends(get_current_user)):
     if not case.get("has_file"):
         raise HTTPException(status_code=404, detail="No file stored for this case")
 
-    file_path = Path(case["file_path"])
+    file_path = Path(case["file_path"]).resolve()
+    try:
+        file_path.relative_to(FILES_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Invalid file path")
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
     return FileResponse(
         path=str(file_path),
         filename=case["file_name"],

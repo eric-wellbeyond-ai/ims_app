@@ -173,11 +173,14 @@ def delete_case(case_id: int, user_id: str) -> bool:
     if case is None:
         return False
     if case.get("file_path"):
-        fp = Path(case["file_path"])
-        if fp.exists():
-            fp.unlink()
+        fp = Path(case["file_path"]).resolve()
         try:
+            fp.relative_to(FILES_DIR.resolve())
+            if fp.exists():
+                fp.unlink()
             fp.parent.rmdir()
+        except ValueError:
+            logger.warning("Refusing to delete file outside FILES_DIR: %s", case["file_path"])
         except OSError:
             pass
     with _connect() as conn:

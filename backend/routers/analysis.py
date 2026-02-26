@@ -19,9 +19,9 @@ router = APIRouter()
 
 @router.post("/api/analyze", response_model=AnalysisResponse)
 async def analyze(
-    file:         UploadFile = File(...),
-    config:       str        = Form(...),
-    _current_user: str       = Depends(get_current_user),
+    file:          UploadFile = File(...),
+    config:        str        = Form(...),
+    current_user:  str        = Depends(get_current_user),
 ):
     """Run MPFM validation analysis on an uploaded spreadsheet."""
     logger.info("Received analysis request")
@@ -46,6 +46,7 @@ async def analyze(
             req.pvt,
             req.test_start,
             req.test_end,
+            user_id=current_user,
             pvt_unc=req.pvt_uncertainties,
             channel_unc=req.channel_uncertainties,
             agg_config=req.aggregation,
@@ -78,9 +79,9 @@ async def analyze(
 
 
 @router.get("/api/export/{session_id}")
-async def export_csv(session_id: str, _current_user: str = Depends(get_current_user)):
+async def export_csv(session_id: str, current_user: str = Depends(get_current_user)):
     """Export the comparison summary as a CSV file."""
-    cached = get_cached_result(session_id)
+    cached = get_cached_result(session_id, current_user)
     if not cached:
         raise HTTPException(status_code=404, detail="Session expired or not found")
 
