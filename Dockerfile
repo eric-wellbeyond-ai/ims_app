@@ -2,12 +2,12 @@
 FROM node:20-alpine AS frontend
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
+COPY ims_app/package.json ims_app/package-lock.json* ./
 RUN npm ci
 
-COPY index.html vite.config.ts tsconfig*.json ./
-COPY src/ ./src/
-COPY public/ ./public/
+COPY ims_app/index.html ims_app/vite.config.ts ims_app/tsconfig*.json ./
+COPY ims_app/src/ ./src/
+COPY ims_app/public/ ./public/
 
 RUN npm run build          # outputs to /app/dist
 
@@ -17,11 +17,15 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install Python dependencies
-COPY backend/requirements.txt ./
+COPY ims_app/backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend source
-COPY backend/ ./backend/
+COPY ims_app/backend/ ./backend/
+
+# Copy the thermo thermodynamic library (sibling repo in the IMS/ workspace)
+COPY thermo/ ./thermo/
+ENV THERMO_PATH=/app/thermo
 
 # Copy built frontend (served by FastAPI as static files)
 COPY --from=frontend /app/dist/ ./static/

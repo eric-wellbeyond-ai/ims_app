@@ -7,7 +7,6 @@ import {
   Paper,
   Grid,
 } from "@mui/material";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DownloadIcon from "@mui/icons-material/Download";
 import { useAnalysis } from "../context/AnalysisContext";
 import { getExportUrl } from "../api/analysisApi";
@@ -23,7 +22,7 @@ export default function DashboardPage() {
   const { result } = useAnalysis();
 
   useEffect(() => {
-    if (!result) navigate("/");
+    if (!result) navigate("/configure");
   }, [result, navigate]);
 
   if (!result) return null;
@@ -46,21 +45,13 @@ export default function DashboardPage() {
             data points
           </Typography>
         </Box>
-        <Box sx={{ display: "flex", gap: 1 }}>
-          <Button
-            startIcon={<ArrowBackIcon />}
-            onClick={() => navigate("/")}
-          >
-            Back
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<DownloadIcon />}
-            href={getExportUrl(result.session_id)}
-          >
-            Export CSV
-          </Button>
-        </Box>
+        <Button
+          variant="outlined"
+          startIcon={<DownloadIcon />}
+          href={getExportUrl(result.session_id)}
+        >
+          Export CSV
+        </Button>
       </Box>
 
       {/* Summary Comparison Table */}

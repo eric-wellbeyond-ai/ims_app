@@ -1,4 +1,5 @@
-import { TextField, Stack } from "@mui/material";
+import { TextField, Stack, Chip, Tooltip, IconButton } from "@mui/material";
+import EditIcon from "@mui/icons-material/Edit";
 import type { PVTConfig, PVTUncertainties } from "../types/analysis";
 
 interface PvtFormProps {
@@ -6,9 +7,20 @@ interface PvtFormProps {
   onChange: (pvt: PVTConfig) => void;
   pvtUnc: PVTUncertainties;
   onUncChange: (unc: PVTUncertainties) => void;
+  /** When set, the shrinkage field is locked to this calculated value. */
+  shrinkageFromFluid?: number | null;
+  /** Called when the user wants to revert shrinkage to manual entry. */
+  onClearCalculatedShrinkage?: () => void;
 }
 
-export default function PvtForm({ pvt, onChange, pvtUnc, onUncChange }: PvtFormProps) {
+export default function PvtForm({
+  pvt,
+  onChange,
+  pvtUnc,
+  onUncChange,
+  shrinkageFromFluid,
+  onClearCalculatedShrinkage,
+}: PvtFormProps) {
   const handleChange = (field: keyof PVTConfig) => (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -21,29 +33,65 @@ export default function PvtForm({ pvt, onChange, pvtUnc, onUncChange }: PvtFormP
     onUncChange({ ...pvtUnc, [field]: parseFloat(e.target.value) || 0 });
   };
 
+  const shrinkageLocked = shrinkageFromFluid != null;
+
   return (
     <Stack spacing={2}>
+      {/* Oil Shrinkage Factor */}
       <Stack direction="row" spacing={1} alignItems="flex-start">
         <TextField
           label="Oil Shrinkage Factor"
           type="number"
           value={pvt.oil_shrinkage}
           onChange={handleChange("oil_shrinkage")}
-          helperText="Bo^-1 style shrinkage (e.g. 0.9237)"
+          helperText={
+            shrinkageLocked
+              ? "Calculated from fluid composition"
+              : "Bo^-1 style shrinkage (e.g. 0.9237)"
+          }
           inputProps={{ step: 0.0001, min: 0, max: 2 }}
           size="small"
           sx={{ flex: 3 }}
+          disabled={shrinkageLocked}
+          InputProps={
+            shrinkageLocked
+              ? {
+                  endAdornment: (
+                    <Tooltip title="Switch back to manual entry">
+                      <IconButton
+                        size="small"
+                        edge="end"
+                        onClick={onClearCalculatedShrinkage}
+                        tabIndex={-1}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  ),
+                }
+              : undefined
+          }
         />
-        <TextField
-          label="± (%)"
-          type="number"
-          value={pvtUnc.oil_shrinkage_pct}
-          onChange={handleUncChange("oil_shrinkage_pct")}
-          helperText="Relative uncertainty"
-          inputProps={{ step: 0.1, min: 0 }}
-          size="small"
-          sx={{ flex: 1 }}
-        />
+        <Stack sx={{ flex: 1 }} spacing={0.5}>
+          <TextField
+            label="± (%)"
+            type="number"
+            value={pvtUnc.oil_shrinkage_pct}
+            onChange={handleUncChange("oil_shrinkage_pct")}
+            helperText="Relative uncertainty"
+            inputProps={{ step: 0.1, min: 0 }}
+            size="small"
+          />
+          {shrinkageLocked && (
+            <Chip
+              label="Calculated"
+              size="small"
+              color="success"
+              variant="outlined"
+              sx={{ fontSize: "0.65rem", height: 18 }}
+            />
+          )}
+        </Stack>
       </Stack>
 
       <Stack direction="row" spacing={1} alignItems="flex-start">

@@ -97,3 +97,38 @@ class AnalysisResponse(BaseModel):
     test_end: str
     n_samples: int
     session_id: str
+
+
+# ---------------------------------------------------------------------------
+# Fluid composition / shrink factor
+# ---------------------------------------------------------------------------
+
+class ComponentInfo(BaseModel):
+    """Summary of a single component from the thermodynamic database."""
+    key: str
+    name: str
+    Mw: float
+    Tc: float
+    Pc: float
+
+
+class FluidComponent(BaseModel):
+    """One component in a fluid composition specification."""
+    key: str
+    zi: float = Field(..., gt=0, description="Mole fraction (normalised internally)")
+
+
+class ShrinkFactorRequest(BaseModel):
+    """Request body for POST /api/fluid/shrink-factor."""
+    components: list[FluidComponent]
+    P_sep: float = Field(..., gt=0, description="Separator pressure [Pa]")
+    T_sep: float = Field(..., gt=0, description="Separator temperature [K]")
+    P_std: float = Field(default=101_325.0, gt=0, description="Standard pressure [Pa]")
+    T_std: float = Field(default=288.15,    gt=0, description="Standard temperature [K]")
+
+
+class ShrinkFactorResponse(BaseModel):
+    """Response for POST /api/fluid/shrink-factor."""
+    oil_shrinkage: float
+    beta_sep: float
+    beta_std: float

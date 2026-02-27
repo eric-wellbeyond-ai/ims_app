@@ -1,6 +1,8 @@
 services:
   app:
-    build: .
+    build:
+      context: ..           # IMS/ — gives Docker access to both ims_app/ and thermo/
+      dockerfile: ims_app/Dockerfile
     ports:
       - "7432:8000"       # access at http://<imac-ip>:7432
     volumes:

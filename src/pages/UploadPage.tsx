@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuthFetch, type AuthFetch } from "../auth/useAuthFetch";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Container,
   Typography,
@@ -26,17 +26,21 @@ import AggregationForm from "../components/AggregationForm";
 import WaterCutTable from "../components/WaterCutTable";
 import TestWindowPicker from "../components/TestWindowPicker";
 import { useAnalysis } from "../context/AnalysisContext";
+import { useFluidContext } from "../context/FluidContext";
 import type {
   PVTConfig,
   WaterCutSample,
   PVTUncertainties,
   ChannelUncertainties,
   MeterAggregationConfig,
+  FluidConfig,
+  ShrinkageSource,
 } from "../types/analysis";
 import {
   defaultPVTUncertainties,
   defaultChannelUncertainties,
   defaultMeterAggregation,
+  defaultFluidConfig,
 } from "../types/analysis";
 import type { SavedCase } from "../types/case";
 
@@ -59,6 +63,9 @@ type FormSnapshot = {
   channelUnc:       ChannelUncertainties;
   aggregation:      MeterAggregationConfig;
   caseName:         string;
+  fluidConfig:      FluidConfig;
+  shrinkageSource:  ShrinkageSource;
+  calculatedShrinkage: number | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -87,8 +94,20 @@ async function fetchCaseFile(
 // ---------------------------------------------------------------------------
 export default function UploadPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { runAnalysis, loading, error } = useAnalysis();
   const authFetch = useAuthFetch();
+
+  // Fluid config and calculated shrinkage live in shared context so ThermoPage
+  // can write to them and this page can read them.
+  const {
+    fluidConfig,
+    calculatedShrinkage,
+    shrinkageSource,
+    clearCalculated,
+    restoreFromCase,
+    resetToDefaults,
+  } = useFluidContext();
 
   // Form state
   const [file, setFile]             = useState<File | null>(null);
@@ -113,6 +132,13 @@ export default function UploadPage() {
   const autosaveEnabledRef = useRef(false);
   const isSavingRef        = useRef(false);
 
+  // Sync calculated shrinkage into pvt whenever ThermoPage updates it
+  useEffect(() => {
+    if (shrinkageSource === "calculated" && calculatedShrinkage != null) {
+      setPvt((prev) => ({ ...prev, oil_shrinkage: calculatedShrinkage }));
+    }
+  }, [calculatedShrinkage, shrinkageSource]);
+
   // ---------------------------------------------------------------------------
   // Save core (create or update; includeFile = false for autosave)
   // ---------------------------------------------------------------------------
@@ -130,6 +156,8 @@ export default function UploadPage() {
           pvt_uncertainties: pvtUnc,
           channel_uncertainties: channelUnc,
           aggregation,
+          fluid_config: fluidConfig,
+          shrinkage_source: shrinkageSource,
         };
         const form = new FormData();
         form.append("config", JSON.stringify(config));
@@ -143,7 +171,6 @@ export default function UploadPage() {
           });
           if (!res.ok) throw new Error(`Save failed: ${res.status}`);
         } else {
-          // First save — always include file
           if (file && !includeFile) form.append("file", file);
           const res = await authFetch("/api/cases", { method: "POST", body: form });
           if (!res.ok) throw new Error(`Save failed: ${res.status}`);
@@ -153,6 +180,7 @@ export default function UploadPage() {
 
         savedSnapshotRef.current = {
           pvt, testStart, testEnd, waterCutSamples, pvtUnc, channelUnc, aggregation, caseName,
+          fluidConfig, shrinkageSource, calculatedShrinkage,
         };
         setSaveStatus("saved");
         return true;
@@ -164,10 +192,10 @@ export default function UploadPage() {
         isSavingRef.current = false;
       }
     },
-    [pvt, testStart, testEnd, waterCutSamples, pvtUnc, channelUnc, aggregation, caseName, file, loadedCaseId, authFetch],
+    [pvt, testStart, testEnd, waterCutSamples, pvtUnc, channelUnc, aggregation, caseName,
+     fluidConfig, shrinkageSource, calculatedShrinkage, file, loadedCaseId, authFetch],
   );
 
-  // Keep a ref that always points to the latest performSaveCore (for autosave timer)
   const performSaveCoreRef = useRef(performSaveCore);
   useEffect(() => { performSaveCoreRef.current = performSaveCore; }, [performSaveCore]);
 
@@ -175,7 +203,7 @@ export default function UploadPage() {
   // Apply a saved case to all form fields
   // ---------------------------------------------------------------------------
   const applyCase = useCallback(async (saved: SavedCase) => {
-    autosaveEnabledRef.current = false; // suppress while loading
+    autosaveEnabledRef.current = false;
 
     const cfg = saved.config;
     if (cfg.pvt)                   setPvt(cfg.pvt);
@@ -186,6 +214,12 @@ export default function UploadPage() {
     if (cfg.channel_uncertainties) setChannelUnc(cfg.channel_uncertainties);
     if (cfg.aggregation)           setAggregation(cfg.aggregation);
     setCaseName(saved.name ?? DEFAULT_NAME);
+
+    restoreFromCase(
+      cfg.fluid_config,
+      cfg.shrinkage_source,
+      cfg.shrinkage_source === "calculated" ? (cfg.pvt?.oil_shrinkage ?? null) : null,
+    );
 
     if (saved.has_file && saved.file_name) {
       try {
@@ -208,23 +242,36 @@ export default function UploadPage() {
       channelUnc:      cfg.channel_uncertainties ?? defaultChannelUncertainties(),
       aggregation:     cfg.aggregation     ?? defaultMeterAggregation(),
       caseName:        saved.name          ?? DEFAULT_NAME,
+      fluidConfig:     cfg.fluid_config    ?? defaultFluidConfig(),
+      shrinkageSource: cfg.shrinkage_source ?? "manual",
+      calculatedShrinkage: cfg.shrinkage_source === "calculated"
+        ? (cfg.pvt?.oil_shrinkage ?? null)
+        : null,
     };
 
-    // Re-enable autosave after React has flushed the state updates
     setTimeout(() => { autosaveEnabledRef.current = true; }, 200);
-  }, [authFetch]);
+  }, [authFetch, restoreFromCase]);
 
   // ---------------------------------------------------------------------------
-  // Auto-load last case on mount
+  // On mount: load case from Scenarios navigation or fall back to latest
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    const caseFromScenarios = location.state?.caseToLoad as SavedCase | undefined;
+    if (caseFromScenarios) {
+      window.history.replaceState({}, "");
+      applyCase(caseFromScenarios).finally(() => {
+        setTimeout(() => { autosaveEnabledRef.current = true; }, 200);
+      });
+      return;
+    }
+
     fetchLatestCase(authFetch)
       .then((saved) => { if (saved) return applyCase(saved); })
       .catch(() => {/* no cases yet — start blank */})
       .finally(() => {
         setTimeout(() => { autosaveEnabledRef.current = true; }, 200);
       });
-  // authFetch reference is stable after login; run once
+  // Run once on mount; applyCase is stable
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applyCase]);
 
@@ -239,7 +286,8 @@ export default function UploadPage() {
     }, 3000);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pvt, testStart, testEnd, waterCutSamples, pvtUnc, channelUnc, aggregation, caseName]);
+  }, [pvt, testStart, testEnd, waterCutSamples, pvtUnc, channelUnc, aggregation, caseName,
+      fluidConfig, shrinkageSource]);
 
   // ---------------------------------------------------------------------------
   // Manual save (includes file)
@@ -282,6 +330,7 @@ export default function UploadPage() {
     setChannelUnc(defaultChannelUncertainties());
     setAggregation(defaultMeterAggregation());
     setCaseName(DEFAULT_NAME);
+    resetToDefaults();
     setLoadedCaseId(null);
     setSaveStatus("never-saved");
     savedSnapshotRef.current = null;
@@ -303,6 +352,7 @@ export default function UploadPage() {
     setChannelUnc(snap.channelUnc);
     setAggregation(snap.aggregation);
     setCaseName(snap.caseName);
+    restoreFromCase(snap.fluidConfig, snap.shrinkageSource, snap.calculatedShrinkage);
     setSaveStatus("saved");
     setTimeout(() => { autosaveEnabledRef.current = true; }, 200);
   };
@@ -324,7 +374,7 @@ export default function UploadPage() {
         channel_uncertainties: channelUnc,
         aggregation,
       });
-      navigate("/dashboard");
+      navigate("/analysis");
     } catch {
       // Error is stored in context
     }
@@ -354,7 +404,7 @@ export default function UploadPage() {
       {/* Header */}
       <Box sx={{ display: "flex", alignItems: "center", mb: 1, gap: 1, flexWrap: "wrap" }}>
         <Typography variant="h4" sx={{ flexShrink: 0 }}>
-          MPFM Validation
+          Configure
         </Typography>
 
         {/* Inline case name */}
@@ -454,7 +504,14 @@ export default function UploadPage() {
         <Typography variant="h6" gutterBottom>
           Fluid Properties (PVT)
         </Typography>
-        <PvtForm pvt={pvt} onChange={setPvt} pvtUnc={pvtUnc} onUncChange={setPvtUnc} />
+        <PvtForm
+          pvt={pvt}
+          onChange={setPvt}
+          pvtUnc={pvtUnc}
+          onUncChange={setPvtUnc}
+          shrinkageFromFluid={shrinkageSource === "calculated" ? pvt.oil_shrinkage : null}
+          onClearCalculatedShrinkage={clearCalculated}
+        />
       </Paper>
 
       <Paper sx={{ p: 3, mb: 3 }}>

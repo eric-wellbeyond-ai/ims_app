@@ -1,4 +1,4 @@
-import type { AnalysisRequest } from "./analysis";
+import type { AnalysisRequest, FluidConfig, ShrinkageSource } from "./analysis";
 
 /** Summary row returned by GET /api/cases */
 export interface CaseSummary {
@@ -14,7 +14,10 @@ export interface SavedCase {
   name: string;
   created_at: string;
   config: Omit<AnalysisRequest, "pvt_uncertainties" | "channel_uncertainties"> &
-    Partial<Pick<AnalysisRequest, "pvt_uncertainties" | "channel_uncertainties">>;
+    Partial<Pick<AnalysisRequest, "pvt_uncertainties" | "channel_uncertainties">> & {
+      fluid_config?: FluidConfig;
+      shrinkage_source?: ShrinkageSource;
+    };
   file_name: string | null;
   file_path: string | null;
   has_file: boolean;

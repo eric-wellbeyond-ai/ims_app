@@ -1,5 +1,36 @@
 export type AggregationMode = "sum" | "by_difference";
 
+// ---------------------------------------------------------------------------
+// Fluid composition
+// ---------------------------------------------------------------------------
+
+export interface FluidComponent {
+  key: string;
+  zi: number;
+}
+
+export interface FluidConfig {
+  components: FluidComponent[];
+  P_sep_bar: number;   // separator pressure in bar (converted to Pa for the API)
+  T_sep_c: number;     // separator temperature in °C (converted to K for the API)
+}
+
+export interface ComponentInfo {
+  key: string;
+  name: string;
+  Mw: number;
+  Tc: number;
+  Pc: number;
+}
+
+export type ShrinkageSource = "manual" | "calculated";
+
+export function defaultFluidConfig(): FluidConfig {
+  return { components: [], P_sep_bar: 10.0, T_sep_c: 50.0 };
+}
+
+
+
 export interface MeterAggregationConfig {
   mode: AggregationMode;
   meter_ids: string[];

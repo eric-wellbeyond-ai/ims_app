@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.database import init_db
 from backend.routers.analysis import router as analysis_router
 from backend.routers.cases import router as cases_router
+from backend.routers.fluid import router as fluid_router
 
 app = FastAPI(title="MPFM Validation API")
 
@@ -41,6 +42,7 @@ app.add_middleware(
 
 app.include_router(analysis_router)
 app.include_router(cases_router)
+app.include_router(fluid_router)
 
 
 @app.on_event("startup")
