@@ -35,6 +35,8 @@ def _safe_upload_name(original: str) -> str:
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from typing import Any
 
 from backend.auth import get_current_user
 from backend.database import (
@@ -44,6 +46,7 @@ from backend.database import (
     get_case,
     get_latest_case,
     list_cases,
+    patch_case_fluid,
     save_case,
     update_case,
     update_case_file,
@@ -131,6 +134,35 @@ async def update_case_endpoint(
     else:
         logger.info("Updated case %d (config/name only)", case_id)
 
+    return {"id": case_id}
+
+
+# ---------------------------------------------------------------------------
+# Fluid patch
+# ---------------------------------------------------------------------------
+
+class FluidPatchRequest(BaseModel):
+    fluid_config: dict[str, Any]
+    shrinkage_source: str = "manual"
+    flash_factor_source: str = "manual"
+    calculated_flash_factor: Optional[float] = None
+
+
+@router.patch("/{case_id}/fluid")
+def patch_fluid(
+    case_id: int,
+    req: FluidPatchRequest,
+    current_user: str = Depends(get_current_user),
+):
+    """Merge updated fluid composition fields into an existing case's config."""
+    fields: dict = {
+        "fluid_config": req.fluid_config,
+        "shrinkage_source": req.shrinkage_source,
+        "flash_factor_source": req.flash_factor_source,
+        "calculated_flash_factor": req.calculated_flash_factor,
+    }
+    if not patch_case_fluid(case_id, current_user, fields):
+        raise HTTPException(status_code=404, detail="Case not found")
     return {"id": case_id}
 
 

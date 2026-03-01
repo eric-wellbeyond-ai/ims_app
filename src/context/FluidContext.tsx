@@ -11,17 +11,27 @@ import { defaultFluidConfig } from "../types/analysis";
 interface FluidContextType {
   fluidConfig: FluidConfig;
   setFluidConfig: (cfg: FluidConfig) => void;
+
   calculatedShrinkage: number | null;
   shrinkageSource: ShrinkageSource;
-  /** Called when ThermoPage successfully calculates a value. */
-  applyCalculated: (value: number) => void;
-  /** Reverts to manual entry mode. */
-  clearCalculated: () => void;
+
+  calculatedFlashFactor: number | null;
+  flashFactorSource: ShrinkageSource;
+
+  /** Called when ThermoPage or ConfigurePage successfully calculates both PVT values. */
+  applyCalculated: (shrinkage: number, flashFactor: number) => void;
+  /** Reverts shrinkage to manual entry mode only. */
+  clearCalculatedShrinkage: () => void;
+  /** Reverts flash factor to manual entry mode only. */
+  clearCalculatedFlashFactor: () => void;
+
   /** Used by ConfigurePage when loading a saved case. */
   restoreFromCase: (
     cfg: FluidConfig | undefined,
-    source: ShrinkageSource | undefined,
+    shrinkageSource: ShrinkageSource | undefined,
     shrinkage: number | null | undefined,
+    flashFactorSource: ShrinkageSource | undefined,
+    flashFactor: number | null | undefined,
   ) => void;
   /** Used by ConfigurePage for "New Case". */
   resetToDefaults: () => void;
@@ -31,28 +41,43 @@ const FluidContext = createContext<FluidContextType | null>(null);
 
 export function FluidProvider({ children }: { children: ReactNode }) {
   const [fluidConfig, setFluidConfig] = useState<FluidConfig>(defaultFluidConfig());
+
   const [calculatedShrinkage, setCalculatedShrinkage] = useState<number | null>(null);
   const [shrinkageSource, setShrinkageSource] = useState<ShrinkageSource>("manual");
 
-  const applyCalculated = useCallback((value: number) => {
-    setCalculatedShrinkage(value);
+  const [calculatedFlashFactor, setCalculatedFlashFactor] = useState<number | null>(null);
+  const [flashFactorSource, setFlashFactorSource] = useState<ShrinkageSource>("manual");
+
+  const applyCalculated = useCallback((shrinkage: number, flashFactor: number) => {
+    setCalculatedShrinkage(shrinkage);
     setShrinkageSource("calculated");
+    setCalculatedFlashFactor(flashFactor);
+    setFlashFactorSource("calculated");
   }, []);
 
-  const clearCalculated = useCallback(() => {
+  const clearCalculatedShrinkage = useCallback(() => {
     setCalculatedShrinkage(null);
     setShrinkageSource("manual");
+  }, []);
+
+  const clearCalculatedFlashFactor = useCallback(() => {
+    setCalculatedFlashFactor(null);
+    setFlashFactorSource("manual");
   }, []);
 
   const restoreFromCase = useCallback(
     (
       cfg: FluidConfig | undefined,
-      source: ShrinkageSource | undefined,
+      shrinkSrc: ShrinkageSource | undefined,
       shrinkage: number | null | undefined,
+      ffSrc: ShrinkageSource | undefined,
+      flashFactor: number | null | undefined,
     ) => {
       setFluidConfig(cfg ?? defaultFluidConfig());
-      setShrinkageSource(source ?? "manual");
+      setShrinkageSource(shrinkSrc ?? "manual");
       setCalculatedShrinkage(shrinkage ?? null);
+      setFlashFactorSource(ffSrc ?? "manual");
+      setCalculatedFlashFactor(flashFactor ?? null);
     },
     [],
   );
@@ -61,6 +86,8 @@ export function FluidProvider({ children }: { children: ReactNode }) {
     setFluidConfig(defaultFluidConfig());
     setCalculatedShrinkage(null);
     setShrinkageSource("manual");
+    setCalculatedFlashFactor(null);
+    setFlashFactorSource("manual");
   }, []);
 
   return (
@@ -70,8 +97,11 @@ export function FluidProvider({ children }: { children: ReactNode }) {
         setFluidConfig,
         calculatedShrinkage,
         shrinkageSource,
+        calculatedFlashFactor,
+        flashFactorSource,
         applyCalculated,
-        clearCalculated,
+        clearCalculatedShrinkage,
+        clearCalculatedFlashFactor,
         restoreFromCase,
         resetToDefaults,
       }}

@@ -1,13 +1,11 @@
 """
-Shrink factor calculation service using the thermo module.
+PVT property calculation service using the thermo module.
 
-Uses a two-stage flash calculation:
-  Stage 1 – Flash the wellstream at separator conditions
-             → separator liquid composition + density
-  Stage 2 – Flash the separator liquid at standard conditions
-             → stock-tank liquid volume
-
-oil_shrinkage = V_stock_tank / V_separator_liquid  (dimensionless, < 1 typically)
+Delegates entirely to thermo.pvt_properties.calculate_pvt_properties,
+which performs a two-stage PT flash (Peng-Robinson EOS) and returns:
+  - oil_shrinkage  (Bo⁻¹ = V_stock_tank / V_separator_liquid)
+  - flash_factor   (solution GOR in scf/stb)
+  - beta_sep / beta_std (vapour fractions at each stage)
 """
 from __future__ import annotations
 
@@ -57,12 +55,8 @@ def _ensure_thermo_importable() -> None:
 
 _ensure_thermo_importable()
 
-from thermo.substance import Substance           # noqa: E402
-from thermo.database import COMPONENT_DATABASE   # noqa: E402
-
-# Standard conditions
-P_STD_DEFAULT = 101_325.0   # Pa  (1 atm)
-T_STD_DEFAULT = 288.15      # K   (15 °C)
+from thermo.pvt_properties import calculate_pvt_properties as _thermo_pvt  # noqa: E402
+from thermo.database import COMPONENT_DATABASE                               # noqa: E402
 
 
 def get_available_components() -> list[dict]:
@@ -79,16 +73,18 @@ def get_available_components() -> list[dict]:
     ]
 
 
-def calculate_shrink_factor(
+def calculate_pvt_from_fluid(
     component_keys: list[str],
     mole_fractions: list[float],
     P_sep: float,
     T_sep: float,
-    P_std: float = P_STD_DEFAULT,
-    T_std: float = T_STD_DEFAULT,
+    P_std: float = 101_325.0,
+    T_std: float = 288.15,
 ) -> dict:
     """
-    Calculate the oil shrinkage factor (Bo⁻¹) from a wellstream composition.
+    Calculate oil shrinkage factor and flash factor from a wellstream composition.
+
+    Delegates to thermo.pvt_properties.calculate_pvt_properties.
 
     Parameters
     ----------
@@ -102,56 +98,27 @@ def calculate_shrink_factor(
     Returns
     -------
     dict with keys:
-        oil_shrinkage : float – V_stock_tank / V_separator_liquid  (dimensionless)
+        oil_shrinkage : float – Bo⁻¹ = V_stock_tank / V_separator_liquid
+        flash_factor  : float – solution GOR [scf / stb]
         beta_sep      : float – vapour fraction at separator conditions
-        beta_std      : float – vapour fraction at standard conditions (from sep liquid)
+        beta_std      : float – vapour fraction at standard conditions
     """
-    # --- Stage 1: flash wellstream at separator conditions ---
-    sub_sep = Substance(component_keys, mole_fractions)
-    sub_sep.set_state(P=P_sep, T=T_sep)
-    sub_sep.calculate_phase_split()
-
-    beta_sep = float(sub_sep.beta)
-    xi_sep = sub_sep.xi
-    rho_l_sep = float(sub_sep.density_l)
-
-    if beta_sep >= 1.0 - 1e-6:
-        raise ValueError(
-            "The fluid is entirely vapour at the specified separator conditions. "
-            "No liquid phase exists — oil shrinkage factor cannot be computed."
-        )
-
-    # Molar masses [g/mol]
-    Mw_i = [COMPONENT_DATABASE[k]["Mw"] for k in component_keys]
-
-    # Average molar mass of separator liquid [g/mol]
-    Mw_l_sep = float(sum(x * mw for x, mw in zip(xi_sep, Mw_i)))
-
-    # --- Stage 2: flash separator liquid at standard conditions ---
-    sub_std = Substance(component_keys, xi_sep.tolist())
-    sub_std.set_state(P=P_std, T=T_std)
-    sub_std.calculate_phase_split()
-
-    beta_std = float(sub_std.beta)
-    xi_std = sub_std.xi
-    rho_l_std = float(sub_std.density_l)
-
-    Mw_l_std = float(sum(x * mw for x, mw in zip(xi_std, Mw_i)))
-
-    # Molar volumes [m³ / mol of separator liquid]
-    #   ρ [kg/m³], Mw [g/mol]  →  V [m³/mol] = (Mw / 1000) / ρ
-    V_m_sep = (Mw_l_sep / 1000.0) / rho_l_sep
-    V_m_std = (1.0 - beta_std) * (Mw_l_std / 1000.0) / rho_l_std
-
-    oil_shrinkage = V_m_std / V_m_sep
-
-    logger.info(
-        "Shrink factor calculated: %.4f  (β_sep=%.3f, β_std=%.3f)",
-        oil_shrinkage, beta_sep, beta_std,
+    result = _thermo_pvt(
+        component_keys=component_keys,
+        mole_fractions=mole_fractions,
+        P_sep=P_sep,
+        T_sep=T_sep,
+        P_std=P_std,
+        T_std=T_std,
     )
 
-    return {
-        "oil_shrinkage": oil_shrinkage,
-        "beta_sep": beta_sep,
-        "beta_std": beta_std,
-    }
+    logger.info(
+        "PVT calculated: shrinkage=%.4f  flash_factor=%.2f scf/stb  "
+        "(β_sep=%.3f, β_std=%.3f)",
+        result["oil_shrinkage"],
+        result["flash_factor"],
+        result["beta_sep"],
+        result["beta_std"],
+    )
+
+    return result

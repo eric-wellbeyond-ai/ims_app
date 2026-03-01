@@ -21,13 +21,13 @@ import { useAuthFetch } from "../auth/useAuthFetch";
 interface FluidConfigPanelProps {
   config: FluidConfig;
   onChange: (cfg: FluidConfig) => void;
-  onShrinkageCalculated: (value: number) => void;
+  onPvtCalculated: (shrinkage: number, flashFactor: number) => void;
 }
 
 export default function FluidConfigPanel({
   config,
   onChange,
-  onShrinkageCalculated,
+  onPvtCalculated,
 }: FluidConfigPanelProps) {
   const authFetch = useAuthFetch();
 
@@ -36,6 +36,7 @@ export default function FluidConfigPanel({
   const [calculating, setCalculating] = useState(false);
   const [result, setResult] = useState<{
     oil_shrinkage: number;
+    flash_factor: number;
     beta_sep: number;
     beta_std: number;
   } | null>(null);
@@ -97,7 +98,7 @@ export default function FluidConfigPanel({
   };
 
   // ---------------------------------------------------------------------------
-  // Calculate shrink factor
+  // Calculate PVT properties
   // ---------------------------------------------------------------------------
   const handleCalculate = async () => {
     setCalculating(true);
@@ -109,7 +110,7 @@ export default function FluidConfigPanel({
         P_sep: config.P_sep_bar * 1e5,          // bar → Pa
         T_sep: config.T_sep_c + 273.15,          // °C → K
       };
-      const res = await authFetch("/api/fluid/shrink-factor", {
+      const res = await authFetch("/api/fluid/pvt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -120,7 +121,7 @@ export default function FluidConfigPanel({
       }
       const data = await res.json();
       setResult(data);
-      onShrinkageCalculated(data.oil_shrinkage);
+      onPvtCalculated(data.oil_shrinkage, data.flash_factor);
     } catch (e) {
       setCalcError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -239,16 +240,20 @@ export default function FluidConfigPanel({
           onClick={handleCalculate}
           disabled={!canCalculate || calculating}
         >
-          Calculate Shrink Factor
+          Calculate PVT
         </Button>
 
         {result && (
-          <Typography variant="body2" color="success.main" sx={{ fontWeight: 500 }}>
-            Bo⁻¹ = {result.oil_shrinkage.toFixed(4)}
-            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-              (β_sep={result.beta_sep.toFixed(3)}, β_std={result.beta_std.toFixed(3)})
+          <Stack>
+            <Typography variant="body2" color="success.main" sx={{ fontWeight: 500 }}>
+              Bo⁻¹ = {result.oil_shrinkage.toFixed(4)}
+              {"  "}
+              Flash factor = {result.flash_factor.toFixed(1)} scf/stb
             </Typography>
-          </Typography>
+            <Typography variant="caption" color="text.secondary">
+              β_sep={result.beta_sep.toFixed(3)}, β_std={result.beta_std.toFixed(3)}
+            </Typography>
+          </Stack>
         )}
       </Box>
 

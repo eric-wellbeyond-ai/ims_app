@@ -19,6 +19,7 @@ import SaveIcon from "@mui/icons-material/Save";
 import RestoreIcon from "@mui/icons-material/Restore";
 import UndoIcon from "@mui/icons-material/Undo";
 import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
+import CalculateIcon from "@mui/icons-material/Calculate";
 import FileUpload from "../components/FileUpload";
 import PvtForm from "../components/PvtForm";
 import UncertaintyForm from "../components/UncertaintyForm";
@@ -66,6 +67,8 @@ type FormSnapshot = {
   fluidConfig:      FluidConfig;
   shrinkageSource:  ShrinkageSource;
   calculatedShrinkage: number | null;
+  flashFactorSource:   ShrinkageSource;
+  calculatedFlashFactor: number | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -98,13 +101,17 @@ export default function UploadPage() {
   const { runAnalysis, loading, error } = useAnalysis();
   const authFetch = useAuthFetch();
 
-  // Fluid config and calculated shrinkage live in shared context so ThermoPage
+  // Fluid config and calculated PVT live in shared context so ThermoPage
   // can write to them and this page can read them.
   const {
     fluidConfig,
     calculatedShrinkage,
     shrinkageSource,
-    clearCalculated,
+    calculatedFlashFactor,
+    flashFactorSource,
+    applyCalculated,
+    clearCalculatedShrinkage,
+    clearCalculatedFlashFactor,
     restoreFromCase,
     resetToDefaults,
   } = useFluidContext();
@@ -127,6 +134,10 @@ export default function UploadPage() {
   const [loadingCase, setLoadingCase]   = useState(false);
   const [snackbar, setSnackbar]         = useState<string | null>(null);
 
+  // PVT calculation state (for "Calculate PVT from Fluid" button on this page)
+  const [pvtCalculating, setPvtCalculating] = useState(false);
+  const [pvtCalcError, setPvtCalcError]     = useState<string | null>(null);
+
   // Refs
   const savedSnapshotRef   = useRef<FormSnapshot | null>(null);
   const autosaveEnabledRef = useRef(false);
@@ -138,6 +149,48 @@ export default function UploadPage() {
       setPvt((prev) => ({ ...prev, oil_shrinkage: calculatedShrinkage }));
     }
   }, [calculatedShrinkage, shrinkageSource]);
+
+  // Sync calculated flash factor into pvt whenever ThermoPage updates it
+  useEffect(() => {
+    if (flashFactorSource === "calculated" && calculatedFlashFactor != null) {
+      setPvt((prev) => ({ ...prev, flash_factor: calculatedFlashFactor }));
+    }
+  }, [calculatedFlashFactor, flashFactorSource]);
+
+  // ---------------------------------------------------------------------------
+  // Calculate PVT from fluid (button in PVT paper)
+  // ---------------------------------------------------------------------------
+  const handleCalculatePvt = async () => {
+    setPvtCalculating(true);
+    setPvtCalcError(null);
+    try {
+      const body = {
+        components: fluidConfig.components,
+        P_sep: fluidConfig.P_sep_bar * 1e5,
+        T_sep: fluidConfig.T_sep_c + 273.15,
+      };
+      const res = await authFetch("/api/fluid/pvt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { detail?: string }).detail ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json() as { oil_shrinkage: number; flash_factor: number };
+      applyCalculated(data.oil_shrinkage, data.flash_factor);
+      setPvt((prev) => ({
+        ...prev,
+        oil_shrinkage: data.oil_shrinkage,
+        flash_factor:  data.flash_factor,
+      }));
+    } catch (e) {
+      setPvtCalcError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPvtCalculating(false);
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // Save core (create or update; includeFile = false for autosave)
@@ -158,6 +211,8 @@ export default function UploadPage() {
           aggregation,
           fluid_config: fluidConfig,
           shrinkage_source: shrinkageSource,
+          flash_factor_source: flashFactorSource,
+          calculated_flash_factor: calculatedFlashFactor,
         };
         const form = new FormData();
         form.append("config", JSON.stringify(config));
@@ -181,6 +236,7 @@ export default function UploadPage() {
         savedSnapshotRef.current = {
           pvt, testStart, testEnd, waterCutSamples, pvtUnc, channelUnc, aggregation, caseName,
           fluidConfig, shrinkageSource, calculatedShrinkage,
+          flashFactorSource, calculatedFlashFactor,
         };
         setSaveStatus("saved");
         return true;
@@ -193,7 +249,8 @@ export default function UploadPage() {
       }
     },
     [pvt, testStart, testEnd, waterCutSamples, pvtUnc, channelUnc, aggregation, caseName,
-     fluidConfig, shrinkageSource, calculatedShrinkage, file, loadedCaseId, authFetch],
+     fluidConfig, shrinkageSource, calculatedShrinkage,
+     flashFactorSource, calculatedFlashFactor, file, loadedCaseId, authFetch],
   );
 
   const performSaveCoreRef = useRef(performSaveCore);
@@ -215,10 +272,16 @@ export default function UploadPage() {
     if (cfg.aggregation)           setAggregation(cfg.aggregation);
     setCaseName(saved.name ?? DEFAULT_NAME);
 
+    const restoredFlashFactor = cfg.flash_factor_source === "calculated"
+      ? (cfg.calculated_flash_factor ?? cfg.pvt?.flash_factor ?? null)
+      : null;
+
     restoreFromCase(
       cfg.fluid_config,
       cfg.shrinkage_source,
       cfg.shrinkage_source === "calculated" ? (cfg.pvt?.oil_shrinkage ?? null) : null,
+      cfg.flash_factor_source,
+      restoredFlashFactor,
     );
 
     if (saved.has_file && saved.file_name) {
@@ -247,6 +310,8 @@ export default function UploadPage() {
       calculatedShrinkage: cfg.shrinkage_source === "calculated"
         ? (cfg.pvt?.oil_shrinkage ?? null)
         : null,
+      flashFactorSource: cfg.flash_factor_source ?? "manual",
+      calculatedFlashFactor: restoredFlashFactor,
     };
 
     setTimeout(() => { autosaveEnabledRef.current = true; }, 200);
@@ -287,7 +352,7 @@ export default function UploadPage() {
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pvt, testStart, testEnd, waterCutSamples, pvtUnc, channelUnc, aggregation, caseName,
-      fluidConfig, shrinkageSource]);
+      fluidConfig, shrinkageSource, flashFactorSource]);
 
   // ---------------------------------------------------------------------------
   // Manual save (includes file)
@@ -352,7 +417,13 @@ export default function UploadPage() {
     setChannelUnc(snap.channelUnc);
     setAggregation(snap.aggregation);
     setCaseName(snap.caseName);
-    restoreFromCase(snap.fluidConfig, snap.shrinkageSource, snap.calculatedShrinkage);
+    restoreFromCase(
+      snap.fluidConfig,
+      snap.shrinkageSource,
+      snap.calculatedShrinkage,
+      snap.flashFactorSource,
+      snap.calculatedFlashFactor,
+    );
     setSaveStatus("saved");
     setTimeout(() => { autosaveEnabledRef.current = true; }, 200);
   };
@@ -395,6 +466,8 @@ export default function UploadPage() {
     "saving":      "Saving…",
     "unsaved":     "Unsaved changes",
   };
+
+  const hasFluid = fluidConfig.components.length > 0;
 
   // ---------------------------------------------------------------------------
   // Render
@@ -504,13 +577,51 @@ export default function UploadPage() {
         <Typography variant="h6" gutterBottom>
           Fluid Properties (PVT)
         </Typography>
+
+        {/* Fluid summary / calculate button */}
+        {!hasFluid ? (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              No fluid configured.
+            </Typography>
+            <Button size="small" onClick={() => navigate("/thermo")}>
+              Configure Fluid
+            </Button>
+          </Box>
+        ) : (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 2, flexWrap: "wrap" }}>
+            <Typography variant="body2" color="text.secondary">
+              {fluidConfig.components.length} component{fluidConfig.components.length !== 1 ? "s" : ""}
+              {" · "}{fluidConfig.P_sep_bar} bar{" · "}{fluidConfig.T_sep_c}°C
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={
+                pvtCalculating
+                  ? <CircularProgress size={14} color="inherit" />
+                  : <CalculateIcon />
+              }
+              onClick={handleCalculatePvt}
+              disabled={pvtCalculating}
+            >
+              {pvtCalculating ? "Calculating…" : "Calculate PVT from Fluid"}
+            </Button>
+            {pvtCalcError && (
+              <Typography variant="caption" color="error">{pvtCalcError}</Typography>
+            )}
+          </Box>
+        )}
+
         <PvtForm
           pvt={pvt}
           onChange={setPvt}
           pvtUnc={pvtUnc}
           onUncChange={setPvtUnc}
           shrinkageFromFluid={shrinkageSource === "calculated" ? pvt.oil_shrinkage : null}
-          onClearCalculatedShrinkage={clearCalculated}
+          onClearCalculatedShrinkage={clearCalculatedShrinkage}
+          flashFactorFromFluid={flashFactorSource === "calculated" ? pvt.flash_factor : null}
+          onClearCalculatedFlashFactor={clearCalculatedFlashFactor}
         />
       </Paper>
 

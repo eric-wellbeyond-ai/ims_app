@@ -11,6 +11,10 @@ interface PvtFormProps {
   shrinkageFromFluid?: number | null;
   /** Called when the user wants to revert shrinkage to manual entry. */
   onClearCalculatedShrinkage?: () => void;
+  /** When set, the flash factor field is locked to this calculated value. */
+  flashFactorFromFluid?: number | null;
+  /** Called when the user wants to revert flash factor to manual entry. */
+  onClearCalculatedFlashFactor?: () => void;
 }
 
 export default function PvtForm({
@@ -20,6 +24,8 @@ export default function PvtForm({
   onUncChange,
   shrinkageFromFluid,
   onClearCalculatedShrinkage,
+  flashFactorFromFluid,
+  onClearCalculatedFlashFactor,
 }: PvtFormProps) {
   const handleChange = (field: keyof PVTConfig) => (
     e: React.ChangeEvent<HTMLInputElement>
@@ -34,6 +40,7 @@ export default function PvtForm({
   };
 
   const shrinkageLocked = shrinkageFromFluid != null;
+  const flashFactorLocked = flashFactorFromFluid != null;
 
   return (
     <Stack spacing={2}>
@@ -94,29 +101,64 @@ export default function PvtForm({
         </Stack>
       </Stack>
 
+      {/* Flash Factor */}
       <Stack direction="row" spacing={1} alignItems="flex-start">
         <TextField
           label="Flash Factor (scf/stb)"
           type="number"
           value={pvt.flash_factor}
           onChange={handleChange("flash_factor")}
-          helperText="Gas evolved when oil flashes to standard (e.g. 94.13)"
+          helperText={
+            flashFactorLocked
+              ? "Calculated from fluid composition"
+              : "Gas evolved when oil flashes to standard (e.g. 94.13)"
+          }
           inputProps={{ step: 0.01, min: 0 }}
           size="small"
           sx={{ flex: 3 }}
+          disabled={flashFactorLocked}
+          InputProps={
+            flashFactorLocked
+              ? {
+                  endAdornment: (
+                    <Tooltip title="Switch back to manual entry">
+                      <IconButton
+                        size="small"
+                        edge="end"
+                        onClick={onClearCalculatedFlashFactor}
+                        tabIndex={-1}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  ),
+                }
+              : undefined
+          }
         />
-        <TextField
-          label="± (%)"
-          type="number"
-          value={pvtUnc.flash_factor_pct}
-          onChange={handleUncChange("flash_factor_pct")}
-          helperText="Relative uncertainty"
-          inputProps={{ step: 0.1, min: 0 }}
-          size="small"
-          sx={{ flex: 1 }}
-        />
+        <Stack sx={{ flex: 1 }} spacing={0.5}>
+          <TextField
+            label="± (%)"
+            type="number"
+            value={pvtUnc.flash_factor_pct}
+            onChange={handleUncChange("flash_factor_pct")}
+            helperText="Relative uncertainty"
+            inputProps={{ step: 0.1, min: 0 }}
+            size="small"
+          />
+          {flashFactorLocked && (
+            <Chip
+              label="Calculated"
+              size="small"
+              color="success"
+              variant="outlined"
+              sx={{ fontSize: "0.65rem", height: 18 }}
+            />
+          )}
+        </Stack>
       </Stack>
 
+      {/* BS&W */}
       <Stack direction="row" spacing={1} alignItems="flex-start">
         <TextField
           label="BS&W (fraction)"

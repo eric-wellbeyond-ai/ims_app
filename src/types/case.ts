@@ -17,6 +17,8 @@ export interface SavedCase {
     Partial<Pick<AnalysisRequest, "pvt_uncertainties" | "channel_uncertainties">> & {
       fluid_config?: FluidConfig;
       shrinkage_source?: ShrinkageSource;
+      flash_factor_source?: ShrinkageSource;
+      calculated_flash_factor?: number | null;
     };
   file_name: string | null;
   file_path: string | null;

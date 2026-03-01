@@ -192,6 +192,26 @@ def delete_case(case_id: int, user_id: str) -> bool:
     return True
 
 
+def patch_case_fluid(case_id: int, user_id: str, fluid_fields: dict) -> bool:
+    """Merge fluid-related keys into the existing case config (no file change).
+    Returns True if the row existed and was updated."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT config FROM cases WHERE id = ? AND user_id = ?",
+            (case_id, user_id),
+        ).fetchone()
+        if row is None:
+            return False
+        config = json.loads(row["config"])
+        config.update(fluid_fields)
+        conn.execute(
+            "UPDATE cases SET config = ? WHERE id = ? AND user_id = ?",
+            (json.dumps(config), case_id, user_id),
+        )
+        conn.commit()
+    return True
+
+
 def claim_unassigned_cases(user_id: str) -> int:
     """Assign all cases with no owner (user_id='') to user_id.
     Called once after first login to preserve any pre-auth data.

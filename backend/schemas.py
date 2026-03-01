@@ -118,8 +118,8 @@ class FluidComponent(BaseModel):
     zi: float = Field(..., gt=0, description="Mole fraction (normalised internally)")
 
 
-class ShrinkFactorRequest(BaseModel):
-    """Request body for POST /api/fluid/shrink-factor."""
+class PvtFromFluidRequest(BaseModel):
+    """Request body for POST /api/fluid/pvt."""
     components: list[FluidComponent]
     P_sep: float = Field(..., gt=0, description="Separator pressure [Pa]")
     T_sep: float = Field(..., gt=0, description="Separator temperature [K]")
@@ -127,8 +127,14 @@ class ShrinkFactorRequest(BaseModel):
     T_std: float = Field(default=288.15,    gt=0, description="Standard temperature [K]")
 
 
-class ShrinkFactorResponse(BaseModel):
-    """Response for POST /api/fluid/shrink-factor."""
+class PvtFromFluidResponse(BaseModel):
+    """Response for POST /api/fluid/pvt."""
     oil_shrinkage: float
+    flash_factor: float
     beta_sep: float
     beta_std: float
+
+
+# Back-compat aliases (kept so existing clients don't break during migration)
+ShrinkFactorRequest = PvtFromFluidRequest
+ShrinkFactorResponse = PvtFromFluidResponse
