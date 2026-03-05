@@ -9,10 +9,15 @@ export interface FluidComponent {
   zi: number;
 }
 
+export type ThermoEngine = "ims_thermo" | "pvtsim";
+
 export interface FluidConfig {
   components: FluidComponent[];
-  P_sep_bar: number;   // separator pressure in bar (converted to Pa for the API)
-  T_sep_c: number;     // separator temperature in °C (converted to K for the API)
+  P_sep_bar: number;           // separator pressure in bar (converted to Pa for the API)
+  T_sep_c: number;             // separator temperature in °C (converted to K for the API)
+  thermoEngine?: ThermoEngine; // undefined treated as "ims_thermo"
+  pvtsimDbPath?: string;       // Windows path to .nfdb file (pvtsim engine only)
+  pvtsimFluidNumber?: number;  // 1-based fluid index in database (pvtsim engine only)
 }
 
 export interface ComponentInfo {
@@ -26,7 +31,13 @@ export interface ComponentInfo {
 export type ShrinkageSource = "manual" | "calculated";
 
 export function defaultFluidConfig(): FluidConfig {
-  return { components: [], P_sep_bar: 10.0, T_sep_c: 50.0 };
+  return {
+    components: [],
+    P_sep_bar: 10.0,
+    T_sep_c: 50.0,
+    thermoEngine: "ims_thermo",
+    pvtsimFluidNumber: 1,
+  };
 }
 
 

@@ -1,7 +1,7 @@
 from enum import Enum
 
 from pydantic import BaseModel, Field, model_validator
-from typing import Optional
+from typing import Literal, Optional
 from datetime import datetime
 
 
@@ -125,6 +125,18 @@ class PvtFromFluidRequest(BaseModel):
     T_sep: float = Field(..., gt=0, description="Separator temperature [K]")
     P_std: float = Field(default=101_325.0, gt=0, description="Standard pressure [Pa]")
     T_std: float = Field(default=288.15,    gt=0, description="Standard temperature [K]")
+    thermo_engine: Literal["ims_thermo", "pvtsim"] = Field(
+        default="ims_thermo",
+        description="Thermodynamic engine to use for the PVT calculation",
+    )
+    pvtsim_db_path: Optional[str] = Field(
+        default=None,
+        description="Windows path to PVTsim .nfdb database file (pvtsim engine only)",
+    )
+    pvtsim_fluid_number: int = Field(
+        default=1, ge=1,
+        description="1-based fluid index in the PVTsim database (pvtsim engine only)",
+    )
 
 
 class PvtFromFluidResponse(BaseModel):

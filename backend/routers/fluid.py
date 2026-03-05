@@ -22,9 +22,10 @@ def _get_service():
     try:
         from backend.services.shrink_factor_service import (
             calculate_pvt_from_fluid,
+            calculate_pvt_from_fluid_pvtsim,
             get_available_components,
         )
-        return calculate_pvt_from_fluid, get_available_components
+        return calculate_pvt_from_fluid, calculate_pvt_from_fluid_pvtsim, get_available_components
     except ImportError as exc:
         raise HTTPException(
             status_code=503,
@@ -35,7 +36,7 @@ def _get_service():
 @router.get("/components", response_model=list[ComponentInfo])
 def list_components(current_user: str = Depends(get_current_user)):
     """Return all components available in the thermodynamic database."""
-    _, get_comps = _get_service()
+    _, _, get_comps = _get_service()
     return get_comps()
 
 
@@ -46,22 +47,44 @@ def compute_pvt(
 ):
     """
     Calculate oil shrinkage factor (Bo⁻¹) and flash factor (scf/stb) from a
-    wellstream composition using a two-stage PT flash via the Peng-Robinson EOS.
+    wellstream composition.  The thermodynamic engine is selected by the caller:
+
+    - ``ims_thermo`` – two-stage PT flash via the internal Peng-Robinson EOS
+    - ``pvtsim``     – Stage 1 via PVTsim Nova bridge, Stage 2 via internal PR EOS
     """
     if not req.components:
         raise HTTPException(status_code=422, detail="At least one component is required.")
 
-    calc_pvt, _ = _get_service()
+    calc_ims, calc_pvtsim, _ = _get_service()
 
     try:
-        result = calc_pvt(
-            component_keys=[c.key for c in req.components],
-            mole_fractions=[c.zi for c in req.components],
-            P_sep=req.P_sep,
-            T_sep=req.T_sep,
-            P_std=req.P_std,
-            T_std=req.T_std,
-        )
+        if req.thermo_engine == "pvtsim":
+            if not req.pvtsim_db_path:
+                raise HTTPException(
+                    status_code=422,
+                    detail="pvtsim_db_path is required when thermo_engine is 'pvtsim'.",
+                )
+            result = calc_pvtsim(
+                db_path=req.pvtsim_db_path,
+                fluid_number=req.pvtsim_fluid_number,
+                component_keys=[c.key for c in req.components],
+                mole_fractions=[c.zi for c in req.components],
+                P_sep=req.P_sep,
+                T_sep=req.T_sep,
+                P_std=req.P_std,
+                T_std=req.T_std,
+            )
+        else:
+            result = calc_ims(
+                component_keys=[c.key for c in req.components],
+                mole_fractions=[c.zi for c in req.components],
+                P_sep=req.P_sep,
+                T_sep=req.T_sep,
+                P_std=req.P_std,
+                T_std=req.T_std,
+            )
+    except HTTPException:
+        raise
     except KeyError as exc:
         raise HTTPException(status_code=422, detail=f"Unknown component key: {exc}")
     except ValueError as exc:

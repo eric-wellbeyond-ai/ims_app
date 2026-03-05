@@ -55,8 +55,9 @@ def _ensure_thermo_importable() -> None:
 
 _ensure_thermo_importable()
 
-from thermo.pvt_properties import calculate_pvt_properties as _thermo_pvt  # noqa: E402
-from thermo.database import COMPONENT_DATABASE                               # noqa: E402
+from thermo.pvt_properties import calculate_pvt_properties as _thermo_pvt          # noqa: E402
+from thermo.pvtsim_pvt_properties import calculate_pvt_properties_pvtsim as _pvtsim_pvt  # noqa: E402
+from thermo.database import COMPONENT_DATABASE                                        # noqa: E402
 
 
 def get_available_components() -> list[dict]:
@@ -113,7 +114,54 @@ def calculate_pvt_from_fluid(
     )
 
     logger.info(
-        "PVT calculated: shrinkage=%.4f  flash_factor=%.2f scf/stb  "
+        "PVT [ims_thermo]: shrinkage=%.4f  flash_factor=%.2f scf/stb  "
+        "(β_sep=%.3f, β_std=%.3f)",
+        result["oil_shrinkage"],
+        result["flash_factor"],
+        result["beta_sep"],
+        result["beta_std"],
+    )
+
+    return result
+
+
+def calculate_pvt_from_fluid_pvtsim(
+    db_path: str,
+    fluid_number: int,
+    component_keys: list[str],
+    mole_fractions: list[float],
+    P_sep: float,
+    T_sep: float,
+    P_std: float = 101_325.0,
+    T_std: float = 288.15,
+) -> dict:
+    """
+    Calculate oil shrinkage factor and flash factor using PVTsim Nova (Stage 1
+    via the Windows bridge) and the internal PR EOS (Stage 2).
+
+    Parameters
+    ----------
+    db_path         : Windows path to the PVTsim .nfdb database file
+    fluid_number    : 1-based fluid index in the database
+    component_keys  : component keys matching the PVTsim fluid composition order
+    mole_fractions  : corresponding mole fractions (unused — composition comes from PVTsim)
+    P_sep           : separator pressure [Pa]
+    T_sep           : separator temperature [K]
+    P_std           : standard pressure [Pa]   (default 1 atm)
+    T_std           : standard temperature [K]  (default 15 °C)
+    """
+    result = _pvtsim_pvt(
+        db_path=db_path,
+        fluid_number=fluid_number,
+        component_keys=component_keys,
+        P_sep=P_sep,
+        T_sep=T_sep,
+        P_std=P_std,
+        T_std=T_std,
+    )
+
+    logger.info(
+        "PVT [pvtsim]: shrinkage=%.4f  flash_factor=%.2f scf/stb  "
         "(β_sep=%.3f, β_std=%.3f)",
         result["oil_shrinkage"],
         result["flash_factor"],

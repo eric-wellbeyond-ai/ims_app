@@ -8,6 +8,8 @@ import {
   Select,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
   Alert,
@@ -15,7 +17,7 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import CalculateIcon from "@mui/icons-material/Calculate";
-import type { ComponentInfo, FluidComponent, FluidConfig } from "../types/analysis";
+import type { ComponentInfo, FluidComponent, FluidConfig, ThermoEngine } from "../types/analysis";
 import { useAuthFetch } from "../auth/useAuthFetch";
 
 interface FluidConfigPanelProps {
@@ -54,6 +56,10 @@ export default function FluidConfigPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Resolved engine (treat undefined as "ims_thermo" for backward compat)
+  const engine: ThermoEngine = config.thermoEngine ?? "ims_thermo";
+  const isPvtsim = engine === "pvtsim";
+
   // Derived
   const ziSum = config.components.reduce((acc, c) => acc + (c.zi || 0), 0);
   const sumOk = Math.abs(ziSum - 1.0) < 0.005;
@@ -62,13 +68,13 @@ export default function FluidConfigPanel({
     config.components.length >= 1 &&
     config.P_sep_bar > 0 &&
     config.T_sep_c > -273.15 &&
-    ziSum > 0;
+    ziSum > 0 &&
+    (!isPvtsim || !!config.pvtsimDbPath);
 
   // ---------------------------------------------------------------------------
   // Composition row handlers
   // ---------------------------------------------------------------------------
   const addRow = () => {
-    // Pick the first component not already in the list
     const usedKeys = new Set(config.components.map((c) => c.key));
     const next = availableComponents.find((a) => !usedKeys.has(a.key));
     onChange({
@@ -79,21 +85,18 @@ export default function FluidConfigPanel({
   };
 
   const removeRow = (idx: number) => {
-    const updated = config.components.filter((_, i) => i !== idx);
-    onChange({ ...config, components: updated });
+    onChange({ ...config, components: config.components.filter((_, i) => i !== idx) });
     setResult(null);
   };
 
   const updateKey = (idx: number, key: string) => {
-    const updated = config.components.map((c, i) => (i === idx ? { ...c, key } : c));
-    onChange({ ...config, components: updated });
+    onChange({ ...config, components: config.components.map((c, i) => (i === idx ? { ...c, key } : c)) });
     setResult(null);
   };
 
   const updateZi = (idx: number, raw: string) => {
     const zi = parseFloat(raw) || 0;
-    const updated = config.components.map((c, i) => (i === idx ? { ...c, zi } : c));
-    onChange({ ...config, components: updated });
+    onChange({ ...config, components: config.components.map((c, i) => (i === idx ? { ...c, zi } : c)) });
     setResult(null);
   };
 
@@ -105,11 +108,16 @@ export default function FluidConfigPanel({
     setCalcError(null);
     setResult(null);
     try {
-      const body = {
+      const body: Record<string, unknown> = {
         components: config.components,
-        P_sep: config.P_sep_bar * 1e5,          // bar → Pa
-        T_sep: config.T_sep_c + 273.15,          // °C → K
+        P_sep: config.P_sep_bar * 1e5,   // bar → Pa
+        T_sep: config.T_sep_c + 273.15,  // °C → K
+        thermo_engine: engine,
       };
+      if (isPvtsim) {
+        body.pvtsim_db_path = config.pvtsimDbPath;
+        body.pvtsim_fluid_number = config.pvtsimFluidNumber ?? 1;
+      }
       const res = await authFetch("/api/fluid/pvt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -131,6 +139,58 @@ export default function FluidConfigPanel({
 
   return (
     <Stack spacing={2}>
+      {/* Thermodynamic engine selector */}
+      <Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.75 }}>
+          Thermodynamic engine
+        </Typography>
+        <ToggleButtonGroup
+          value={engine}
+          exclusive
+          size="small"
+          onChange={(_, val: ThermoEngine | null) => {
+            if (val) {
+              onChange({ ...config, thermoEngine: val });
+              setResult(null);
+            }
+          }}
+        >
+          <ToggleButton value="ims_thermo">IMS Thermo (PR EOS)</ToggleButton>
+          <ToggleButton value="pvtsim">PVTsim Nova</ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
+
+      {/* PVTsim-specific fields */}
+      {isPvtsim && (
+        <Stack spacing={1.5}>
+          <TextField
+            label="Database path (.nfdb)"
+            placeholder={String.raw`C:\Program Files\Calsep\PVTsim Nova Open Structure Samples\FlashOSDatabaseV7.nfdb`}
+            value={config.pvtsimDbPath ?? ""}
+            onChange={(e) => {
+              onChange({ ...config, pvtsimDbPath: e.target.value });
+              setResult(null);
+            }}
+            size="small"
+            helperText="Windows path to the PVTsim .nfdb database file"
+            fullWidth
+          />
+          <TextField
+            label="Fluid number"
+            type="number"
+            value={config.pvtsimFluidNumber ?? 1}
+            onChange={(e) => {
+              onChange({ ...config, pvtsimFluidNumber: parseInt(e.target.value) || 1 });
+              setResult(null);
+            }}
+            inputProps={{ step: 1, min: 1 }}
+            size="small"
+            helperText="1-based index of the fluid in the database"
+            sx={{ maxWidth: 180 }}
+          />
+        </Stack>
+      )}
+
       {/* Separator conditions */}
       <Stack direction="row" spacing={2}>
         <TextField
@@ -164,6 +224,11 @@ export default function FluidConfigPanel({
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
           <Typography variant="body2" color="text.secondary">
             Wellstream composition
+            {isPvtsim && (
+              <Typography component="span" variant="caption" color="text.disabled" sx={{ ml: 1 }}>
+                (must match PVTsim fluid component order)
+              </Typography>
+            )}
           </Typography>
           <Typography
             variant="caption"
@@ -196,7 +261,6 @@ export default function FluidConfigPanel({
                     {c.key} — {c.name}
                   </MenuItem>
                 ))}
-                {/* Fallback in case list not loaded yet */}
                 {!availableComponents.find((c) => c.key === row.key) && (
                   <MenuItem value={row.key}>{row.key}</MenuItem>
                 )}

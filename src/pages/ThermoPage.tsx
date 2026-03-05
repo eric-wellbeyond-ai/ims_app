@@ -124,9 +124,12 @@ export default function ThermoPage() {
       </Box>
 
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        Define the wellstream composition and separator conditions. The Peng-Robinson
-        EOS performs a two-stage flash to calculate the oil shrinkage factor (Bo⁻¹)
-        and flash factor (scf/stb), which are automatically applied in the Configure page.
+        Define the wellstream composition and separator conditions, then select a
+        thermodynamic engine to calculate the oil shrinkage factor (Bo⁻¹) and flash
+        factor (scf/stb). <strong>IMS Thermo</strong> uses an internal Peng-Robinson EOS.{" "}
+        <strong>PVTsim Nova</strong> delegates to the PVTsim bridge service — ensure the
+        bridge is running on Windows before calculating. Results are automatically applied
+        in the Configure page.
       </Typography>
 
       {/* Status banner */}
