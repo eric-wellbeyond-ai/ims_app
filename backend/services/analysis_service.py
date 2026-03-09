@@ -9,7 +9,12 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-from backend.bespoke_parser import read_timeseries
+from backend.bespoke_parser import (
+    read_timeseries,
+    read_template_xlsx,
+    is_template_xlsx,
+    _parse_template_df,
+)
 from backend.mpfm_analysis import (
     filter_test_window,
     compute_derived_columns,
@@ -107,9 +112,17 @@ def run_analysis(
     if ext == ".csv":
         logger.info("Reading as CSV")
         raw = _read_csv(filepath)
+    elif ext in (".tsv", ".txt"):
+        logger.info("Reading as TSV (pasted template data)")
+        raw = _read_tsv(filepath)
     else:
         logger.info("Reading as Excel with openpyxl")
-        raw = read_timeseries(filepath, sheet_name)
+        if is_template_xlsx(filepath):
+            logger.info("Detected template format")
+            raw = read_template_xlsx(filepath)
+        else:
+            logger.info("Detected legacy bespoke format")
+            raw = read_timeseries(filepath, sheet_name)
 
     logger.info("Raw data: %d rows, %s -> %s", len(raw), raw.index.min(), raw.index.max())
 
@@ -200,6 +213,12 @@ def _read_csv(filepath: str) -> pd.DataFrame:
     for c in df.columns:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     return df
+
+
+def _read_tsv(filepath: str) -> pd.DataFrame:
+    """Read pasted TSV data in template format (3 header rows + data rows)."""
+    raw = pd.read_csv(filepath, sep="\t", header=None, dtype=str)
+    return _parse_template_df(raw)
 
 
 def get_cached_result(session_id: str, user_id: str) -> dict | None:

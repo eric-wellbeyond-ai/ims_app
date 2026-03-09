@@ -8,11 +8,24 @@ lives here and nowhere else.
 The generic analysis pipeline (mpfm_analysis.py) accepts plain DataFrames and
 has no knowledge of this file format.
 
+Two formats are supported:
+
+1. **Template format** (meter_data_template.xlsx):
+   - Row 1: meter names (col A is the timestamp label)
+   - Row 2: process variable names
+   - Row 3: units (informational only)
+   - Row 4+: timestamp in col A, measured values in subsequent columns
+
+2. **Legacy bespoke format** (original MPFM VALIDATION DATA layout):
+   - Metadata in specific rows (9, 12, …)
+   - Time-series data starting at row 28, columns D–S
+
 CLI usage (from the ims_app/ directory):
     python -m backend.bespoke_parser <spreadsheet.xlsx> [--sheet SHEET] [--plots] [--csv]
 """
 
 import argparse
+from datetime import datetime as _dt
 from pathlib import Path
 
 import pandas as pd
@@ -152,6 +165,131 @@ def read_timeseries(filepath: str,
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
     return df
+
+
+# ---------------------------------------------------------------------------
+# Template format parser  (meter_data_template.xlsx)
+# ---------------------------------------------------------------------------
+
+# Meter name → canonical prefix
+_METER_ALIASES: dict[str, str] = {
+    "test_sep":  "sep",
+    "separator": "sep",
+    "sep_ref":   "sep",
+    "reference": "sep",
+    "sep_reference": "sep",
+    "spot_sample":   "spot",
+    # Template names after lowercasing+underscore (e.g. "MPFM #1" → "mpfm_#1")
+    "mpfm_#1": "mpfm1",
+    "mpfm_#2": "mpfm2",
+    "mpfm_#3": "mpfm3",
+}
+
+# Variable name (lowercased, spaces→_) → canonical suffix
+_VAR_ALIASES: dict[str, str] = {
+    "total_liquid_rate":                    "total_liquid",
+    "gas_rate":                             "gas",
+    "oil_rate":                             "oil",
+    "water_rate":                           "water",
+    "gas_orifice_diff._pressure":           "gas_dp",
+    "gas_orifice_differential_pressure":    "gas_dp",
+    "gas_dp_orifice":                       "gas_dp",
+    "differential_pressure":                "gas_dp",
+}
+
+# (canonical_meter, raw_var) → override the whole column name
+# Used for cases where meter+variable semantics don't follow the m_v pattern.
+_COMBO_OVERRIDE: dict[tuple[str, str], str] = {
+    ("sep", "water-liq_ratio"):    "spot_wlr",
+    ("sep", "water_liq_ratio"):    "spot_wlr",
+    ("sep", "wlr"):                "spot_wlr",
+    ("sep", "water_liquid_ratio"): "spot_wlr",
+}
+
+
+def _parse_template_df(raw_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Parse a DataFrame produced from the template layout:
+      Row 0 → meter names  (col 0 is timestamp label)
+      Row 1 → process variable names
+      Row 2 → units (ignored)
+      Row 3+ → data  (col 0 = timestamp)
+
+    Returns a DataFrame with a DatetimeIndex and canonical column names
+    (e.g. ``sep_total_liquid``, ``mpfm1_oil``).
+    """
+    if len(raw_df) < 4:
+        raise ValueError(
+            "Template file must have at least 4 rows (3 header rows + 1 data row)."
+        )
+
+    meters    = [str(v).strip() for v in raw_df.iloc[0, 1:]]
+    variables = [str(v).strip() for v in raw_df.iloc[1, 1:]]
+
+    col_names: list[str] = []
+    for meter, var in zip(meters, variables):
+        m_raw = meter.lower().replace(" ", "_")
+        v_raw = var.lower().replace(" ", "_")
+        m = _METER_ALIASES.get(m_raw, m_raw)
+        v = _VAR_ALIASES.get(v_raw, v_raw)
+        override = _COMBO_OVERRIDE.get((m, v_raw))
+        col_names.append(override if override else f"{m}_{v}")
+
+    data = raw_df.iloc[3:].reset_index(drop=True).copy()
+    data.columns = pd.Index(["timestamp"] + col_names)
+    data["timestamp"] = pd.to_datetime(data["timestamp"], errors="coerce")
+    data = data.dropna(subset=["timestamp"])
+    data = data.set_index("timestamp").sort_index()
+
+    for c in data.columns:
+        data[c] = pd.to_numeric(data[c], errors="coerce")
+
+    return data
+
+
+def read_template_xlsx(filepath: str, sheet_name=0) -> pd.DataFrame:
+    """
+    Read an Excel file using the IMS meter data template layout.
+    Accepts either a sheet index (default 0 = first sheet) or a sheet name.
+    """
+    import openpyxl
+
+    wb = openpyxl.load_workbook(filepath, data_only=True, read_only=True)
+    if isinstance(sheet_name, str) and sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+    else:
+        ws = wb.worksheets[0]
+
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+
+    if not rows:
+        raise ValueError("Template Excel file is empty.")
+
+    return _parse_template_df(pd.DataFrame(rows))
+
+
+def is_template_xlsx(filepath: str) -> bool:
+    """
+    Return True if the Excel file appears to use the template format.
+
+    Heuristic: the cell in row 4, column A (index [3][0]) is a datetime
+    object, which means data starts at row 4.  The legacy bespoke format
+    has data starting at row 28, so row 4 col A is never a datetime there.
+    """
+    try:
+        import openpyxl
+
+        wb = openpyxl.load_workbook(filepath, data_only=True, read_only=True)
+        ws = wb.worksheets[0]
+        cell_val = None
+        for row in ws.iter_rows(min_row=4, max_row=4, max_col=1, values_only=True):
+            cell_val = row[0]
+            break
+        wb.close()
+        return isinstance(cell_val, _dt)
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
