@@ -18,7 +18,15 @@ export async function postAnalysis(
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "Analysis failed" }));
-    throw new Error(err.detail || "Analysis failed");
+    const detail = err.detail;
+    // FastAPI 422 validation errors return detail as an array of objects
+    const message =
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((e: { msg?: string }) => e.msg ?? JSON.stringify(e)).join("; ")
+          : "Analysis failed";
+    throw new Error(message);
   }
 
   return res.json();

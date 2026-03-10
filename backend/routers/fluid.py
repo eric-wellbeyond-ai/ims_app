@@ -52,9 +52,6 @@ def compute_pvt(
     - ``ims_thermo`` – two-stage PT flash via the internal Peng-Robinson EOS
     - ``pvtsim``     – Stage 1 via PVTsim Nova bridge, Stage 2 via internal PR EOS
     """
-    if not req.components:
-        raise HTTPException(status_code=422, detail="At least one component is required.")
-
     calc_ims, calc_pvtsim, _ = _get_service()
 
     try:
@@ -67,14 +64,16 @@ def compute_pvt(
             result = calc_pvtsim(
                 db_path=req.pvtsim_db_path,
                 fluid_number=req.pvtsim_fluid_number,
-                component_keys=[c.key for c in req.components],
-                mole_fractions=[c.zi for c in req.components],
                 P_sep=req.P_sep,
                 T_sep=req.T_sep,
+                component_keys=[c.key for c in req.components] or None,
+                mole_fractions=[c.zi for c in req.components] or None,
                 P_std=req.P_std,
                 T_std=req.T_std,
             )
         else:
+            if not req.components:
+                raise HTTPException(status_code=422, detail="At least one component is required.")
             result = calc_ims(
                 component_keys=[c.key for c in req.components],
                 mole_fractions=[c.zi for c in req.components],

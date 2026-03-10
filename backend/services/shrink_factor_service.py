@@ -128,10 +128,10 @@ def calculate_pvt_from_fluid(
 def calculate_pvt_from_fluid_pvtsim(
     db_path: str,
     fluid_number: int,
-    component_keys: list[str],
-    mole_fractions: list[float],
     P_sep: float,
     T_sep: float,
+    component_keys: list[str] | None = None,
+    mole_fractions: list[float] | None = None,
     P_std: float = 101_325.0,
     T_std: float = 288.15,
 ) -> dict:
@@ -143,19 +143,20 @@ def calculate_pvt_from_fluid_pvtsim(
     ----------
     db_path         : Windows path to the PVTsim .nfdb database file
     fluid_number    : 1-based fluid index in the database
-    component_keys  : component keys matching the PVTsim fluid composition order
-    mole_fractions  : corresponding mole fractions (unused — composition comes from PVTsim)
     P_sep           : separator pressure [Pa]
     T_sep           : separator temperature [K]
+    component_keys  : optional component keys for the internal EOS; if omitted
+                      they are derived automatically from PVTsim component names
+    mole_fractions  : unused — composition comes from PVTsim
     P_std           : standard pressure [Pa]   (default 1 atm)
     T_std           : standard temperature [K]  (default 15 °C)
     """
     result = _pvtsim_pvt(
         db_path=db_path,
         fluid_number=fluid_number,
-        component_keys=component_keys,
         P_sep=P_sep,
         T_sep=T_sep,
+        component_keys=component_keys or [],
         P_std=P_std,
         T_std=T_std,
     )

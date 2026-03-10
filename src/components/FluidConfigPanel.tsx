@@ -64,12 +64,14 @@ export default function FluidConfigPanel({
   const ziSum = config.components.reduce((acc, c) => acc + (c.zi || 0), 0);
   const sumOk = Math.abs(ziSum - 1.0) < 0.005;
 
-  const canCalculate =
-    config.components.length >= 1 &&
-    config.P_sep_bar > 0 &&
-    config.T_sep_c > -273.15 &&
-    ziSum > 0 &&
-    (!isPvtsim || !!config.pvtsimDbPath);
+  const canCalculate = isPvtsim
+    ? !!config.pvtsimDbPath &&
+      config.P_sep_bar > 0 &&
+      config.T_sep_c > -273.15
+    : config.components.length >= 1 &&
+      config.P_sep_bar > 0 &&
+      config.T_sep_c > -273.15 &&
+      ziSum > 0;
 
   // ---------------------------------------------------------------------------
   // Composition row handlers

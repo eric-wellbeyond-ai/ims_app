@@ -129,6 +129,20 @@ def run_analysis(
     ts = filter_test_window(raw, window)
     logger.info("Filtered to test window: %d rows", len(ts))
 
+    if len(ts) == 0:
+        raise ValueError(
+            "No data rows found in the test window. "
+            "Check that the test start/end times match the timestamps in your file."
+        )
+
+    # Check that at least some numeric data is present (blank template guard)
+    numeric_cols = [c for c in ts.columns if c not in ("sep_temperature", "sep_pressure", "sep_gas_dp")]
+    if ts[numeric_cols].isnull().all(axis=None):
+        raise ValueError(
+            "The file contains timestamps but no measurement values. "
+            "Please fill in the data cells before uploading."
+        )
+
     agg = MeterAggregation(
         mode=AggregationMode(agg_config.mode) if agg_config else AggregationMode.SUM,
         meter_ids=agg_config.meter_ids if agg_config else ["mpfm1", "mpfm2", "mpfm3"],

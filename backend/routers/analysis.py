@@ -51,6 +51,27 @@ async def analyze(
             channel_unc=req.channel_uncertainties,
             agg_config=req.aggregation,
         )
+
+        if result["n_samples"] == 0:
+            raise ValueError(
+                "No data rows found in the test window. "
+                "Check that the test start/end times match the timestamps in your file."
+            )
+
+        logger.info("Returning response with %d comparison rows, %d deviation rows",
+                    len(result["comparison"]), len(result["deviations"]))
+
+        return AnalysisResponse(
+            comparison=[PhaseResult(**row) for row in result["comparison"]],
+            deviations=result["deviations"],
+            timeseries=result["timeseries"],
+            sigma_ts=result.get("sigma_ts", []),
+            pvt=req.pvt,
+            test_start=req.test_start.isoformat(),
+            test_end=req.test_end.isoformat(),
+            n_samples=result["n_samples"],
+            session_id=result["session_id"],
+        )
     except ValueError as e:
         logger.error("Analysis ValueError: %s", e)
         logger.error(traceback.format_exc())
@@ -61,21 +82,6 @@ async def analyze(
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
     finally:
         os.unlink(tmp_path)
-
-    logger.info("Returning response with %d comparison rows, %d deviation rows",
-                len(result["comparison"]), len(result["deviations"]))
-
-    return AnalysisResponse(
-        comparison=[PhaseResult(**row) for row in result["comparison"]],
-        deviations=result["deviations"],
-        timeseries=result["timeseries"],
-        sigma_ts=result.get("sigma_ts", []),
-        pvt=req.pvt,
-        test_start=req.test_start.isoformat(),
-        test_end=req.test_end.isoformat(),
-        n_samples=result["n_samples"],
-        session_id=result["session_id"],
-    )
 
 
 @router.get("/api/export/{session_id}")
