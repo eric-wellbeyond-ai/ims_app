@@ -117,7 +117,7 @@ function UploadTab({
           startIcon={<DownloadIcon fontSize="small" />}
           component={Link}
           href="/meter_data_template.xlsx"
-          download
+          download="meter_data_template.xlsx"
           sx={{ textTransform: "none" }}
         >
           Download template
@@ -216,7 +216,7 @@ function PasteTab({
           startIcon={<DownloadIcon fontSize="small" />}
           component={Link}
           href="/meter_data_template.xlsx"
-          download
+          download="meter_data_template.xlsx"
           sx={{ textTransform: "none", verticalAlign: "baseline" }}
         >
           Download template
