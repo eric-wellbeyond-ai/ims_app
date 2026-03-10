@@ -1,73 +1,63 @@
-# React + TypeScript + Vite
+# IMS App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+MPFM validation tool — React + FastAPI.
 
-Currently, two official plugins are available:
+## Running the app
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Mac — development (hot-reload)
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+./dev.sh
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Starts:
+- FastAPI backend on `http://localhost:8000`
+- Vite dev server on `http://localhost:5173` (proxies `/api` → `:8000`)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Open `http://localhost:5173` in your browser.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Mac — production / network sharing (Docker)
+
+```bash
+./prod.sh
+```
+
+Builds and starts a Docker container serving the bundled frontend + API at `http://localhost:7432`. Use this to share the app on the local network.
+
+### Windows VM — PVTsim bridge (only needed for PVTsim thermo engine)
+
+```powershell
+.\start_bridge.ps1
+```
+
+Located in `../thermo/pvtsim_bridge/`. Starts the PVTsim Nova HTTP bridge on port `9000`.
+
+After starting it, run `ipconfig` on Windows to find the VM's IP address (look for the Parallels/Ethernet adapter), then update `.env` on the Mac:
+
+```
+PVTSIM_BRIDGE_URL=http://10.211.55.3:9000
+```
+
+## Ports at a glance
+
+| Process | Port | Host |
+|---|---|---|
+| FastAPI backend (local dev) | `8000` | Mac |
+| Vite dev server | `5173` | Mac |
+| Docker container (prod) | `7432` | Mac |
+| PVTsim bridge | `9000` | Windows VM |
+
+## Project layout
+
+```
+IMS/
+├── ims_app/        # This repo — React frontend + FastAPI backend
+│   ├── backend/    # FastAPI app
+│   ├── src/        # React/TypeScript source
+│   ├── dev.sh      # Start local dev servers
+│   ├── prod.sh     # Build and run via Docker
+│   └── .env        # PVTSIM_BRIDGE_URL and other config
+└── thermo/         # Python thermodynamic library (Peng-Robinson EOS)
+    └── pvtsim_bridge/
+        └── start_bridge.ps1   # Windows: start PVTsim bridge server
 ```
