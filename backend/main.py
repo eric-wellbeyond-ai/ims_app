@@ -12,6 +12,7 @@ logging.basicConfig(
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.database import init_db
@@ -58,4 +59,16 @@ def on_startup():
 # local dev (where Vite handles the frontend), so we only mount when present.
 _static = Path(__file__).parent.parent / "static"
 if _static.exists():
-    app.mount("/", StaticFiles(directory=str(_static), html=True), name="spa")
+    # Mount hashed Vite assets directly (JS/CSS bundles).
+    _assets = _static / "assets"
+    if _assets.exists():
+        app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
+
+    # Explicit SPA catch-all: any GET that didn't match an API route gets
+    # index.html so React Router can handle client-side navigation on refresh.
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def _spa_fallback(full_path: str) -> FileResponse:
+        candidate = _static / full_path
+        if candidate.is_file():
+            return FileResponse(str(candidate))
+        return FileResponse(str(_static / "index.html"))
