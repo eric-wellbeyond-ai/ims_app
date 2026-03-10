@@ -20,7 +20,8 @@
       "Bash(__NEW_LINE_efb6434a438df662__ curl -s -X POST http://localhost:8000/api/analyze -F \"config=$CONFIG\" -F \"file=@/Users/esmith/Developer/IMS/ims_app/data/case_files/2/MPFM Sample Data for Bayesian Analysis.xlsx\" )",
       "Bash(__NEW_LINE_a32e0c87d41fe8ed__ curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" -X POST http://localhost:8000/api/analyze -F \"config=$CONFIG\" -F \"file=@/Users/esmith/Developer/IMS/ims_app/data/case_files/2/MPFM Sample Data for Bayesian Analysis.xlsx\")",
       "Bash(CONFIG='{\"\"pvt\"\":{\"\"oil_shrinkage\"\":0.9237,\"\"flash_factor\"\":94.13,\"\"bsw\"\":0.2496},\"\"test_start\"\":\"\"2025-10-11T00:00:00.000Z\"\",\"\"test_end\"\":\"\"2025-10-11T12:00:00.000Z\"\",\"\"water_cut_samples\"\":[{\"\"timestamp\"\":\"\"\"\",\"\"value\"\":0.33},{\"\"timestamp\"\":\"\"\"\",\"\"value\"\":24},{\"\"timestamp\"\":\"\"2025-10-11T01:00:00Z\"\",\"\"value\"\":0.3}],\"\"pvt_uncertainties\"\":{\"\"oil_shrinkage_pct\"\":5,\"\"flash_factor_pct\"\":5,\"\"bsw_pct\"\":5},\"\"channel_uncertainties\"\":{\"\"sep_liquid_pct\"\":5,\"\"sep_gas_pct\"\":5,\"\"mpfm_oil_pct\"\":5,\"\"mpfm_gas_pct\"\":5,\"\"mpfm_water_pct\"\":5},\"\"aggregation\"\":{\"\"mode\"\":\"\"sum\"\",\"\"meter_ids\"\":[\"\"mpfm1\"\",\"\"mpfm2\"\",\"\"mpfm3\"\"]}}')",
-      "Bash(__NEW_LINE_8b7a04086be1ee30__ curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" -X POST http://localhost:8000/api/analyze -F \"config=$CONFIG\" -F \"file=@/Users/esmith/Developer/IMS/ims_app/data/case_files/2/MPFM Sample Data for Bayesian Analysis.xlsx\")"
+      "Bash(__NEW_LINE_8b7a04086be1ee30__ curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" -X POST http://localhost:8000/api/analyze -F \"config=$CONFIG\" -F \"file=@/Users/esmith/Developer/IMS/ims_app/data/case_files/2/MPFM Sample Data for Bayesian Analysis.xlsx\")",
+      "Bash(npm run:*)"
     ]
   }
 }

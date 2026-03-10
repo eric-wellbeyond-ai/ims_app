@@ -17,7 +17,7 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import CalculateIcon from "@mui/icons-material/Calculate";
-import type { ComponentInfo, FluidComponent, FluidConfig, ThermoEngine } from "../types/analysis";
+import type { ComponentInfo, FluidConfig, ThermoEngine } from "../types/analysis";
 import { useAuthFetch } from "../auth/useAuthFetch";
 
 interface FluidConfigPanelProps {
