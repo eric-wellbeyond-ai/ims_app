@@ -23,9 +23,10 @@ def _get_service():
         from backend.services.shrink_factor_service import (
             calculate_pvt_from_fluid,
             calculate_pvt_from_fluid_pvtsim,
+            calculate_pvt_from_fluid_multiflash,
             get_available_components,
         )
-        return calculate_pvt_from_fluid, calculate_pvt_from_fluid_pvtsim, get_available_components
+        return calculate_pvt_from_fluid, calculate_pvt_from_fluid_pvtsim, calculate_pvt_from_fluid_multiflash, get_available_components
     except ImportError as exc:
         raise HTTPException(
             status_code=503,
@@ -36,7 +37,7 @@ def _get_service():
 @router.get("/components", response_model=list[ComponentInfo])
 def list_components(current_user: str = Depends(get_current_user)):
     """Return all components available in the thermodynamic database."""
-    _, _, get_comps = _get_service()
+    _, _, _, get_comps = _get_service()
     return get_comps()
 
 
@@ -49,10 +50,11 @@ def compute_pvt(
     Calculate oil shrinkage factor (Bo⁻¹) and flash factor (scf/stb) from a
     wellstream composition.  The thermodynamic engine is selected by the caller:
 
-    - ``ims_thermo`` – two-stage PT flash via the internal Peng-Robinson EOS
-    - ``pvtsim``     – Stage 1 via PVTsim Nova bridge, Stage 2 via internal PR EOS
+    - ``ims_thermo``  – two-stage PT flash via the internal Peng-Robinson EOS
+    - ``pvtsim``      – Stage 1 via PVTsim Nova bridge, Stage 2 via internal PR EOS
+    - ``multiflash``  – Stage 1 via KBC Multiflash bridge, Stage 2 via internal PR EOS
     """
-    calc_ims, calc_pvtsim, _ = _get_service()
+    calc_ims, calc_pvtsim, calc_mf, _ = _get_service()
 
     try:
         if req.thermo_engine == "pvtsim":
@@ -68,6 +70,20 @@ def compute_pvt(
                 T_sep=req.T_sep,
                 component_keys=[c.key for c in req.components] or None,
                 mole_fractions=[c.zi for c in req.components] or None,
+                P_std=req.P_std,
+                T_std=req.T_std,
+            )
+        elif req.thermo_engine == "multiflash":
+            if not req.multiflash_mfl_path:
+                raise HTTPException(
+                    status_code=422,
+                    detail="multiflash_mfl_path is required when thermo_engine is 'multiflash'.",
+                )
+            result = calc_mf(
+                mfl_path=req.multiflash_mfl_path,
+                P_sep=req.P_sep,
+                T_sep=req.T_sep,
+                component_keys=[c.key for c in req.components] or None,
                 P_std=req.P_std,
                 T_std=req.T_std,
             )

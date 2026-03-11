@@ -125,7 +125,7 @@ class PvtFromFluidRequest(BaseModel):
     T_sep: float = Field(..., gt=0, description="Separator temperature [K]")
     P_std: float = Field(default=101_325.0, gt=0, description="Standard pressure [Pa]")
     T_std: float = Field(default=288.15,    gt=0, description="Standard temperature [K]")
-    thermo_engine: Literal["ims_thermo", "pvtsim"] = Field(
+    thermo_engine: Literal["ims_thermo", "pvtsim", "multiflash"] = Field(
         default="ims_thermo",
         description="Thermodynamic engine to use for the PVT calculation",
     )
@@ -136,6 +136,10 @@ class PvtFromFluidRequest(BaseModel):
     pvtsim_fluid_number: int = Field(
         default=1, ge=1,
         description="1-based fluid index in the PVTsim database (pvtsim engine only)",
+    )
+    multiflash_mfl_path: Optional[str] = Field(
+        default=None,
+        description="Windows path to Multiflash .mfl model file (multiflash engine only)",
     )
 
 
