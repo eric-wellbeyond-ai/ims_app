@@ -59,6 +59,7 @@ export default function FluidConfigPanel({
   // Resolved engine (treat undefined as "ims_thermo" for backward compat)
   const engine: ThermoEngine = config.thermoEngine ?? "ims_thermo";
   const isPvtsim = engine === "pvtsim";
+  const isMultiflash = engine === "multiflash";
 
   // Derived
   const ziSum = config.components.reduce((acc, c) => acc + (c.zi || 0), 0);
@@ -66,6 +67,10 @@ export default function FluidConfigPanel({
 
   const canCalculate = isPvtsim
     ? !!config.pvtsimDbPath &&
+      config.P_sep_bar > 0 &&
+      config.T_sep_c > -273.15
+    : isMultiflash
+    ? !!config.multiflashMflPath &&
       config.P_sep_bar > 0 &&
       config.T_sep_c > -273.15
     : config.components.length >= 1 &&
@@ -119,6 +124,8 @@ export default function FluidConfigPanel({
       if (isPvtsim) {
         body.pvtsim_db_path = config.pvtsimDbPath;
         body.pvtsim_fluid_number = config.pvtsimFluidNumber ?? 1;
+      } else if (isMultiflash) {
+        body.multiflash_mfl_path = config.multiflashMflPath;
       }
       const res = await authFetch("/api/fluid/pvt", {
         method: "POST",
@@ -159,8 +166,25 @@ export default function FluidConfigPanel({
         >
           <ToggleButton value="ims_thermo">IMS Thermo (PR EOS)</ToggleButton>
           <ToggleButton value="pvtsim">PVTsim Nova</ToggleButton>
+          <ToggleButton value="multiflash">Multiflash</ToggleButton>
         </ToggleButtonGroup>
       </Box>
+
+      {/* Multiflash-specific fields */}
+      {isMultiflash && (
+        <TextField
+          label="Model file path (.mfl)"
+          placeholder={String.raw`C:\Multiflash\models\fluid.mfl`}
+          value={config.multiflashMflPath ?? ""}
+          onChange={(e) => {
+            onChange({ ...config, multiflashMflPath: e.target.value });
+            setResult(null);
+          }}
+          size="small"
+          helperText="Windows path to the Multiflash .mfl model file"
+          fullWidth
+        />
+      )}
 
       {/* PVTsim-specific fields */}
       {isPvtsim && (
@@ -229,6 +253,11 @@ export default function FluidConfigPanel({
             {isPvtsim && (
               <Typography component="span" variant="caption" color="text.disabled" sx={{ ml: 1 }}>
                 (must match PVTsim fluid component order)
+              </Typography>
+            )}
+            {isMultiflash && (
+              <Typography component="span" variant="caption" color="text.disabled" sx={{ ml: 1 }}>
+                (optional — derived from Multiflash model if omitted)
               </Typography>
             )}
           </Typography>
