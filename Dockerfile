@@ -26,6 +26,7 @@ COPY ims_app/backend/ ./backend/
 # Copy the thermo thermodynamic library (sibling repo in the IMS/ workspace)
 COPY thermo/ ./thermo/
 ENV THERMO_PATH=/app/thermo
+ENV PYTHONPATH=/app/thermo
 
 # Copy built frontend (served by FastAPI as static files)
 COPY --from=frontend /app/dist/ ./static/

@@ -39,35 +39,26 @@ def _get_component_list() -> list[dict]:
     Import COMPONENT_DATABASE independently of the full calculation stack.
     Falls back gracefully if thermo is unavailable rather than returning 503.
     """
-    import os, sys
-    logger.info("_get_component_list: THERMO_PATH=%s", os.environ.get("THERMO_PATH"))
-    logger.info("_get_component_list: sys.path=%s", sys.path)
-
     try:
         from backend.services.shrink_factor_service import get_available_components
-        components = get_available_components()
-        logger.info("_get_component_list: loaded %d components via service", len(components))
-        return components
+        return get_available_components()
     except ImportError as exc:
-        logger.warning("_get_component_list: service import failed: %s", exc)
+        logger.warning("Component list unavailable via service: %s", exc)
 
     try:
         from backend.services.shrink_factor_service import _ensure_thermo_importable
         _ensure_thermo_importable()
-        logger.info("_get_component_list: thermo path resolved via _ensure_thermo_importable")
     except Exception as exc:
-        logger.warning("_get_component_list: _ensure_thermo_importable failed: %s", exc)
+        logger.warning("Could not resolve thermo path: %s", exc)
 
     try:
         from thermo.database import COMPONENT_DATABASE
-        components = [
+        return [
             {"key": k, "name": v["name"], "Mw": v["Mw"], "Tc": v["Tc"], "Pc": v["Pc"]}
             for k, v in COMPONENT_DATABASE.items()
         ]
-        logger.info("_get_component_list: loaded %d components directly from DB", len(components))
-        return components
     except ImportError as exc:
-        logger.error("_get_component_list: direct DB import failed: %s", exc)
+        logger.error("Component database unavailable: %s", exc)
         return []
 
 
