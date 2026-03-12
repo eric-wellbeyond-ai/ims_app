@@ -31,6 +31,9 @@ def _ensure_thermo_importable() -> None:
     env_path = os.environ.get("THERMO_PATH")
     if env_path:
         candidates.append(Path(env_path))
+        logger.info("THERMO_PATH env var: %s", env_path)
+    else:
+        logger.info("THERMO_PATH env var not set")
 
     # Derive from file location: backend/services/ → ims_app root → IMS/
     app_root = Path(__file__).parents[2]
@@ -39,8 +42,12 @@ def _ensure_thermo_importable() -> None:
         app_root / "thermo",          # vendored copy inside app: ims_app/thermo
     ]
 
+    logger.info("Thermo search candidates: %s", candidates)
+
     for path in candidates:
-        if path.is_dir() and (path / "thermo" / "__init__.py").exists():
+        init_py = path / "thermo" / "__init__.py"
+        logger.info("Checking %s — is_dir=%s, init_exists=%s", path, path.is_dir(), init_py.exists())
+        if path.is_dir() and init_py.exists():
             if str(path) not in sys.path:
                 sys.path.insert(0, str(path))
             logger.info("Loaded thermo package from %s", path)
