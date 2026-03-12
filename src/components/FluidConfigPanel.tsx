@@ -48,8 +48,8 @@ export default function FluidConfigPanel({
   useEffect(() => {
     setLoadingComponents(true);
     authFetch("/api/fluid/components")
-      .then((r) => r.json())
-      .then((data: ComponentInfo[]) => setAvailableComponents(data))
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data: ComponentInfo[]) => { if (Array.isArray(data)) setAvailableComponents(data); })
       .catch(() => {/* silently handled — panel still usable if list fails */})
       .finally(() => setLoadingComponents(false));
   // authFetch is stable post-login
