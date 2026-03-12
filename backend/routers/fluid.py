@@ -34,11 +34,39 @@ def _get_service():
         )
 
 
+def _get_component_list() -> list[dict]:
+    """
+    Import COMPONENT_DATABASE independently of the full calculation stack.
+    Falls back gracefully if thermo is unavailable rather than returning 503.
+    """
+    try:
+        # Try via the service (already has path resolution)
+        from backend.services.shrink_factor_service import get_available_components
+        return get_available_components()
+    except ImportError:
+        pass
+
+    # Service unavailable — try importing the database directly after path setup
+    try:
+        from backend.services.shrink_factor_service import _ensure_thermo_importable
+        _ensure_thermo_importable()
+    except Exception:
+        pass
+
+    try:
+        from thermo.database import COMPONENT_DATABASE
+        return [
+            {"key": k, "name": v["name"], "Mw": v["Mw"], "Tc": v["Tc"], "Pc": v["Pc"]}
+            for k, v in COMPONENT_DATABASE.items()
+        ]
+    except ImportError:
+        return []
+
+
 @router.get("/components", response_model=list[ComponentInfo])
 def list_components(current_user: str = Depends(get_current_user)):
     """Return all components available in the thermodynamic database."""
-    _, _, _, get_comps = _get_service()
-    return get_comps()
+    return _get_component_list()
 
 
 @router.post("/pvt", response_model=PvtFromFluidResponse)
