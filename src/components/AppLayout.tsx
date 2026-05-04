@@ -17,6 +17,7 @@ import ScienceIcon from "@mui/icons-material/Science";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import PersonIcon from "@mui/icons-material/Person";
+import ChatIcon from "@mui/icons-material/Chat";
 import LogoutIcon from "@mui/icons-material/Logout";
 import { useMsal } from "@azure/msal-react";
 import { useAnalysis } from "../context/AnalysisContext";
@@ -42,6 +43,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     { label: "Thermo",     path: "/thermo",     icon: <ScienceIcon /> },
     { label: "Analysis",   path: "/analysis",   icon: <BarChartIcon />, disabled: !result },
     { label: "Scenarios",  path: "/scenarios",  icon: <FolderOpenIcon /> },
+    { label: "Assistant",  path: "/assistant",  icon: <ChatIcon /> },
     { label: "Settings",   path: "/settings",   icon: <PersonIcon /> },
   ];
 
